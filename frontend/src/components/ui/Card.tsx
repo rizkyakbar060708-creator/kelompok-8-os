@@ -6,7 +6,7 @@ interface CardProps {
 function Card({ children, className = "" }: CardProps) {
   return (
     <div
-      className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${className}`}
+      className={`glass-card glass-card-hover rounded-2xl p-5 sm:p-6 ${className}`}
     >
       {children}
     </div>

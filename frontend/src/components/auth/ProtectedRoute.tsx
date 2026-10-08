@@ -73,7 +73,13 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
 };
 
     if (isAuthorized === null) {
-        return <div>Loading...</div>;
+        return (
+            <div className="app-shell flex min-h-screen flex-col items-center justify-center gap-3">
+                <span className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500" />
+
+                <p className="text-sm text-slate-600">Memuat halaman...</p>
+            </div>
+        );
     }
 
     return isAuthorized ? children : <Navigate to="/login" replace />;

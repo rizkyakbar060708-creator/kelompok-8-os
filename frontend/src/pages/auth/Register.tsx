@@ -1,5 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  TriangleAlert,
+  UserRound,
+} from "lucide-react";
 import api from "../../services/api";
 
 function Register() {
@@ -12,6 +19,7 @@ function Register() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -50,106 +58,139 @@ function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
+    <div className="app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+      <div className="orb -right-24 top-10 h-88 w-88 bg-violet-500/32" />
+      <div className="orb -left-28 bottom-0 h-88 w-88 bg-blue-500/32" />
+      <div className="orb left-1/2 top-[-7rem] h-80 w-80 -translate-x-1/2 bg-pink-400/28" />
+      <div className="orb bottom-[4%] left-[14%] h-72 w-72 bg-amber-300/25" />
+
+      <div className="relative w-full max-w-md">
+        <div className="mb-8 text-center">
+          <div className="brand-mark mx-auto mb-4 h-12 w-12 rounded-2xl">
+            <LockKeyhole size={21} />
+          </div>
+
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
             CampusCare
           </h1>
 
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-muted-ambient">
             Sistem Pengaduan Fasilitas Kampus
           </p>
         </div>
 
-        {/* Register Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-semibold text-gray-900">
+        <div className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8">
+          <span className="orb -right-20 -top-20 h-56 w-56 bg-blue-400/25" />
+
+          <div className="relative mb-6">
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
               Buat Akun
             </h2>
 
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-600">
               Daftar untuk menggunakan CampusCare
             </p>
           </div>
 
-          {/* Error */}
           {error && (
-            <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
+            <div role="alert" aria-live="polite" className="alert-error relative mb-5 flex items-start gap-3 rounded-xl px-4 py-3 text-sm">
+              <TriangleAlert size={17} className="mt-0.5 shrink-0 text-red-300" />
+              <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Username */}
+          <form onSubmit={handleSubmit} className="relative space-y-5">
             <div>
               <label
                 htmlFor="username"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="mb-2 block text-sm font-medium text-slate-200"
               >
                 Username
               </label>
 
-              <input
-                id="username"
-                name="username"
-                type="text"
-                value={formData.username}
-                onChange={handleChange}
-                placeholder="Masukkan username"
-                required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
+              <div className="relative">
+                <UserRound
+                  size={17}
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  value={formData.username}
+                  onChange={handleChange}
+                  placeholder="Masukkan username"
+                  required
+                  aria-invalid={Boolean(error)}
+                  className="input-base py-3 pl-10"
+                />
+              </div>
             </div>
 
-            {/* Password */}
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="mb-2 block text-sm font-medium text-slate-200"
               >
                 Password
               </label>
 
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Masukkan password"
-                required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Masukkan password"
+                  required
+                  aria-invalid={Boolean(error)}
+                  className="input-base py-3 pr-12"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/80 hover:text-slate-900"
+                  aria-label={
+                    showPassword ? "Sembunyikan password" : "Tampilkan password"
+                  }
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
             </div>
 
-            {/* Register Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-primary w-full py-3"
             >
-              {loading ? "Mendaftarkan..." : "Daftar"}
+              {loading ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  Mendaftarkan...
+                </>
+              ) : (
+                "Daftar"
+              )}
             </button>
           </form>
 
-          {/* Login */}
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <p className="relative mt-6 text-center text-sm text-slate-600">
             Sudah punya akun?{" "}
             <button
               type="button"
               onClick={() => navigate("/login")}
-              className="font-medium text-blue-600 hover:text-blue-700"
+              className="link-accent"
             >
               Masuk sekarang
             </button>
           </p>
         </div>
 
-        {/* Footer */}
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="mt-6 text-center text-xs text-muted-ambient">
           © 2026 CampusCare
         </p>
       </div>
