@@ -1,88 +1,42 @@
 import { Navigate } from "react-router-dom";
-import { jwtDecode } from "jwt-decode";
-import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-import api from "../../services/api";
-import { REFRESH_TOKEN, ACCESS_TOKEN } from "../../constant";
+import { ACCESS_TOKEN } from "../../constant";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface ProtectedRouteProps {
-    children: ReactNode;
+  children: ReactNode;
+  allowedRoles?: string[];
 }
 
-function ProtectedRoute({ children }: ProtectedRouteProps) {
-    const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const { user, isReady } = useAuth();
 
-    useEffect(() => {
-        auth().catch(() => setIsAuthorized(false));
-    }, []);
+  // AuthProvider sudah memanggil /auth/me/ saat app mount, dan services/api.ts
+  // menangani refresh token otomatis saat 401. Jadi guard tidak perlu fetch
+  // sendiri: cukup tunggu isReady lalu nilai session yang sudah ada.
+  if (!isReady) {
+    return (
+      <div className="app-shell flex min-h-screen flex-col items-center justify-center gap-3">
+        <span className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500" />
 
-    const refreshToken = async () => {
-        const refreshToken = localStorage.getItem(REFRESH_TOKEN);
+        <p className="text-sm text-slate-600">Memuat halaman...</p>
+      </div>
+    );
+  }
 
-        if (!refreshToken) {
-            setIsAuthorized(false);
-            return;
-        }
+  if (!user || !localStorage.getItem(ACCESS_TOKEN)) {
+    return <Navigate to="/login" replace />;
+  }
 
-        try {
-            const res = await api.post("/api/auth/refresh/", {
-                refresh: refreshToken,
-            });
+  // Fallback-nya /forbidden, bukan ke halaman yang sedang dibuka. Kalau
+  // diarahkan balik ke sini, guard akan dievaluasi ulang dengan hasil yang sama
+  // dan menyebabkan infinite redirect loop.
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/forbidden" replace />;
+  }
 
-            if (res.status === 200) {
-                localStorage.setItem(ACCESS_TOKEN, res.data.access);
-                setIsAuthorized(true);
-            } else {
-                setIsAuthorized(false);
-            }
-        } catch (error) {
-            console.log(error);
-            setIsAuthorized(false);
-        }
-    };
-
-    const auth = async () => {
-    const token = localStorage.getItem(ACCESS_TOKEN);
-
-    if (!token) {
-        setIsAuthorized(false);
-        return;
-    }
-
-    try {
-        const decoded = jwtDecode(token);
-        const tokenExpiration = decoded.exp;
-
-        if (!tokenExpiration) {
-            setIsAuthorized(false);
-            return;
-        }
-
-        const now = Date.now() / 1000;
-
-        if (tokenExpiration < now) {
-            await refreshToken();
-        } else {
-            setIsAuthorized(true);
-        }
-    } catch (error) {
-        console.log(error);
-        setIsAuthorized(false);
-    }
-};
-
-    if (isAuthorized === null) {
-        return (
-            <div className="app-shell flex min-h-screen flex-col items-center justify-center gap-3">
-                <span className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500" />
-
-                <p className="text-sm text-slate-600">Memuat halaman...</p>
-            </div>
-        );
-    }
-
-    return isAuthorized ? children : <Navigate to="/login" replace />;
+  return children;
 }
 
 export default ProtectedRoute;

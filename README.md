@@ -31,6 +31,7 @@ Project ini terdiri dari dua bagian yang berjalan terpisah:
 12. [Dokumentasi Lainnya](#12-dokumentasi-lainnya)
 13. [Known Issues](#13-known-issues)
 14. [Contributor](#14-contributor)
+15. [Yang Sudah Diperbaiki](#15-yang-sudah-diperbaiki)
 
 ---
 
@@ -40,6 +41,7 @@ CampusCare adalah aplikasi pengaduan fasilitas kampus dengan dua actor utama:
 
 - **Mahasiswa** — melihat fasilitas, mengirim pengaduan, memantau status pengaduannya.
 - **Pengelola / Staff** — menangani pengaduan yang masuk dan memperbarui statusnya.
+- **Administrator** — memantau seluruh pengaduan dari semua pengguna lewat dashboard khusus.
 
 Data inti yang dimodelkan:
 
@@ -56,11 +58,13 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 
 - Menyediakan satu tempat terpusat untuk melaporkan kerusakan fasilitas kampus.
 - Memudahkan pelacakan status pengaduan dari dilaporkan hingga selesai.
-- Memberikan datafasilitas yang terstruktur sebagai dasar pengaduan.
+- Memberikan data fasilitas yang terstruktur sebagai dasar pengaduan.
 - Menjaga pemisahan hak akses antara berbagai role pengguna.
 
-> **Catatan:** pembatasan hak akses berbasis role masih berupa rancangan. Saat ini
-> `role` disimpan sebagai data tetapi belum membatasi akses endpoint. Lihat
+> **Catatan:** pembatasan hak akses berbasis role **baru ada di sisi frontend** (route
+> `/admin` dan disembunyikan di navigasi). Di sisi backend, `role` masih disimpan sebagai
+> data dan **belum membatasi akses endpoint** mana pun — filter "pengaduan saya" di
+> dashboard user dijalankan di browser, bukan di server. Lihat
 > [§13](#13-known-issues).
 
 ---
@@ -81,15 +85,21 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 
 - Halaman **Login** dan **Register** yang terhubung langsung ke backend API.
 - Layout dashboard dengan sidebar dan navbar responsif.
-- Halaman **Dashboard** dengan kartu ringkasan dan daftar pengaduan terbaru.
+- Halaman **Dashboard** dengan kartu ringkasan dan daftar pengaduan terbaru, **terhubung
+  ke API** dan dihitung dari data nyata.
+- Halaman **Dashboard Admin** khusus role `ADMIN` dengan agregat seluruh pengaduan.
+- Routing berbasis role: halaman dan menu `/admin` hanya untuk `ADMIN`, sedangkan role
+  lainnya menerima halaman **403 Forbidden**.
+- **Auto-refresh token** di axios interceptor — sesi tidak lagi terputus setelah 30 menit.
 - Halaman **Pengaduan** dengan pencarian dan filter status (berbasis data lokal).
 - Halaman **Buat Pengaduan** dengan form dan area unggah foto.
 - Halaman **Profil** yang menampilkan data user dari AuthContext.
+- Halaman **403 Forbidden** dan **404 Not Found**.
 - Design system liquid glass (`glass-panel`, `glass-card`, `glass-chip`, `brand-mark`).
 
-> **Penting:** halaman Dashboard, Pengaduan, dan Buat Pengaduan saat ini masih
-> menggunakan **data contoh (hardcoded)** — belum terhubung ke endpoint backend.
-> Lihat [§11 Status Integrasi](#11-status-integrasi).
+> **Penting:** halaman **Pengaduan** dan **Buat Pengaduan** masih memakai data lokal
+> dan belum mengirim ke backend. Yang sudah terhubung ke API: autentikasi, Dashboard
+> user, dan Dashboard admin. Lihat [§11 Status Integrasi](#11-status-integrasi).
 
 ---
 
@@ -119,6 +129,7 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 | Tailwind CSS | 4.3 |
 | Axios | 1.20 |
 | lucide-react | 1.48 |
+| jwt-decode | 4.0 |
 
 ---
 
@@ -146,11 +157,12 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 │       ├── App.tsx
 │       ├── index.css         # Design system liquid glass
 │       ├── routes/           # AppRoutes
-│       ├── pages/            # auth/ dan user/
+│       ├── pages/            # auth/, user/, admin/, Forbidden, NotFound
 │       ├── layouts/          # DashboardLayout
 │       ├── components/       # auth/, complaint/, ui/
 │       ├── contexts/         # AuthContext
-│       ├── services/         # axios instance
+│       ├── services/         # axios instance + complaint/facility service
+│       ├── utils/            # complaintStats (agregasi & format)
 │       └── constant.ts
 │
 ├── README.md                 # Anda sedang membaca
@@ -172,6 +184,7 @@ Arsitektur **monorepo sederhana** dengan dua aplikasi terpisah yang tidak berbag
 │  - AuthContext       │      { access, refresh } │  - JWT (simplejwt)   │
 │  - axios (api.ts)    │                          │  - DRF ViewSet/GenAPI│
 │  - React Router      │                          │  - SQLite            │
+│  - ProtectedRoute    │                          │                      │
 └──────────────────────┘                          └──────────────────────┘
 ```
 
@@ -183,13 +196,38 @@ Register/Login  ──►  POST /api/auth/login/
                           ├──► access token  (umur 30 menit, disimpan di localStorage)
                           └──► refresh token (umur 7 hari,   disimpan di localStorage)
 
-ProtectedRoute    ──►  decode access token (jwt-decode)
-                          ├── masih valid  ──► izinkan akses
-                          └── kedaluwarsa ──► POST /api/auth/refresh/ ──► token baru
+AuthProvider mount ──►  cek ACCESS di localStorage
+                          ├── tidak ada  ──► isReady = true, user = null
+                          └── ada       ──► GET /auth/me/ ──► setUser()
+
+Login sukses      ──►  refreshUser()  ──►  navigate sesuai role
+                                               ├── ADMIN  ──► /admin
+                                               └── lainnya ──► /dashboard
+
+Request 401       ──►  axios response interceptor
+                          ├── coba POST /auth/refresh/ sekali
+                          │     ├── berhasil ──► ulangi request asli
+                          │     └── gagal     ──► hapus token, ke /login
 ```
+
+Refresh token **dipicu oleh response interceptor**, bukan oleh decoding `exp` di route
+guard. Ada flag `_retried` pada config request supaya 401 yang beruntun tidak
+menyebabkan refresh berulang.
 
 Token disimpan di `localStorage` dengan key `ACCESS` dan `REFRESH`
 (didefinisikan di `frontend/src/constant.ts`).
+
+### Routing berbasis role
+
+| Role | `/dashboard` | `/admin` |
+| --- | --- | --- |
+| `STUDENT` | Dashboard user | 403 Forbidden |
+| `STAFF` | Dashboard user | 403 Forbidden |
+| `ADMIN` | redirect → `/admin` | Dashboard admin |
+
+Fallback saat role tidak cocok diarahkan ke `/forbidden`, **bukan** ke halaman yang
+sedang dibuka. Kalau fallback diarahkan balik ke route yang sama, guard akan
+dievaluasi ulang dengan hasil identik dan terjadi infinite redirect loop.
 
 ### Base URL
 
@@ -340,21 +378,37 @@ Detail lengkap: [`backend/README.md` §8](backend/README.md).
 
 ## 11. Status Integrasi
 
-Integrasi frontend ↔ backend masih **berjalan bertahap**. Berikut kondisi nyata saat ini:
+Integrasi frontend ↔ backend berjalan **bertahap**. Berikut kondisi nyata saat ini:
 
 | Halaman / Modul | Terhubung ke API? | Sumber data saat ini |
 | --- | --- | --- |
 | Register | **Ya** | `POST /api/auth/register/` |
-| Login | **Ya** | `POST /api/auth/login/` |
+| Login | **Ya** | `POST /api/auth/login/` + `GET /api/auth/me/` |
 | AuthContext | **Ya** | `GET /api/auth/me/` |
-| ProtectedRoute | Sebagian | `POST /api/auth/refresh/` *(URL bermasalah, lihat §13)* |
-| Dashboard | Tidak | Data contoh hardcoded |
+| ProtectedRoute | **Ya** | Membaca context, tidak fetch sendiri |
+| Axios interceptor | **Ya** | `POST /api/auth/refresh/` saat 401 |
+| Dashboard (user) | **Ya** | `GET /api/complaints/` + `GET /api/facilities/` |
+| Dashboard Admin | **Ya** | `GET /api/complaints/` + `GET /api/facilities/` |
 | Pengaduan (list) | Tidak | Data contoh hardcoded |
 | Buat Pengaduan | Tidak | `console.log` pada submit |
 | Profil | **Ya** | Lewat AuthContext |
 
-Endpoint `facilities` dan `complaints` **sudah tersedia di backend**, tetapi belum
-dipanggil dari frontend.
+### Catatan tentang data dashboard
+
+Kedua dashboard mengambil data dari endpoint yang sama dan berbeda hanya pada filter:
+
+| Dashboard | Filter | Perbedaan |
+| --- | --- | --- |
+| Dashboard user | `reporter === user.id` | Hanya pengaduan sendiri, 3 kartu metrik |
+| Dashboard Admin | tanpa filter | Seluruh pengaduan, 4 kartu metrik (tambah "Ditolak") |
+
+> **Penting:** filter `reporter === user.id` dijalankan di **browser**, bukan di server.
+> `GET /api/complaints/` masih mengembalikan seluruh pengaduan ke setiap pengguna yang
+> terautentikasi, jadi ini **bukan batas keamanan** — data pengaduan orang lain tetap
+> terlihat di DevTools. Lihat [§13.2](#132-filter-pengaduan-hanya-di-client).
+
+Endpoint `facilities` dan `complaints` sudah dipakai oleh kedua dashboard. Yang masih
+**belum** dipakai: endpoint create/update/delete pengaduan.
 
 ---
 
@@ -369,70 +423,71 @@ dipanggil dari frontend.
 
 ## 13. Known Issues
 
-Temuan berikut berasal dari pemeriksaan kode dan **sudah terverifikasi**.
+Temuan berikut berasal dari pemeriksaan kode dan **sudah terverifikasi**. Item yang
+sudah diselesaikan dicatat di [§15](#15-yang-sudah-diperbaiki).
 
-### 13.1 `ProtectedRoute` belum dipakai di routing
+### 13.1 Inline redirect loop pada route guard
 
-`ProtectedRoute` sudah tersedia di `frontend/src/components/auth/ProtectedRoute.tsx`,
-tetapi **tidak di-import** di `AppRoutes.tsx`. Route dashboard, complaints, dan profile
-dirender tanpa proteksi. `DashboardLayout` juga tidak memeriksa `isAuthenticated`.
+**Sudah diperbaiki.** `ProtectedRoute` mengarahkan user yang role-nya tidak cocok ke
+`/dashboard`, padahal `/dashboard` adalah halaman yang sedang dibuka sekaligus halaman
+yang memakai gate tersebut. Guard dievaluasi ulang, gagal lagi, dan mengulang — hasilnya
+halaman putih.
 
-Konsekuensi: membuka `/dashboard` tanpa token **tidak** mengarahkan user ke halaman login.
+Sekarang fallback mengarah ke `/forbidden`, dan `AppRoutes.tsx` memisahkan
+`/dashboard` (user) dari `/admin` (admin) lewat `DashboardRedirector`.
 
-### 13.2 `jwt-decode` tidak terdaftar di `package.json`
+### 13.2 Filter pengaduan hanya di client
 
-`ProtectedRoute.tsx` meng-import `jwt-decode`, tetapi paket ini **tidak ada** di
-`package.json` maupun `package-lock.json`. Paket tersebut hanya ada di `node_modules`
-lokal, sehingga `npm install` di komputer baru **akan menyebabkan build gagal**.
+`GET /api/complaints/` mengembalikan **seluruh** pengaduan ke setiap pengguna yang
+terautentikasi. Dashboard user memfilter `reporter === user.id` di browser.
 
-Perbaikan: tambahkan `jwt-decode` ke `package.json`.
+**Dampak:** pengaduan milik orang lain tetap dikirim ke browser dan terlihat di
+DevTools. Filter ini hanya mengatur **tampilan**, bukan akses. Should backend
+memperbaiki, `get_queryset()` di `apps/complaints/views.py` perlu memfilter
+`reporter=request.user`.
 
-### 13.3 URL refresh token menggandakan `/api`
+### 13.3 Ownership pengaduan tidak dijaga backend
 
-`ProtectedRoute.tsx` memanggil `api.post("/api/auth/refresh/")`, sedangkan `baseURL` sudah
-berakhiran `/api`. URL akhirnya menjadi:
+`ComplaintDetailView` memakai `Complaint.objects.all()` tanpa pengecekan kepemilikan,
+sehingga user A dapat melihat, mengubah (`PATCH`/`PUT`), dan menghapus (`DELETE`)
+pengaduan milik user B. Field `reporter` juga bisa diisi client, jadi pengaduan bisa
+dibuat atas nama user lain.
 
-```
-http://127.0.0.1:8000/api/api/auth/refresh/   ← tidak valid
-```
+Detail: [`backend/README.md` §14](backend/README.md).
 
-Endpoint yang benar adalah `/auth/refresh/`. Request ini akan gagal jika route tersebut
-saktif dipakai.
+### 13.4 Belum ada pembatasan akses berbasis role di backend
 
-### 13.4 Status pengaduan berbeda antara backend dan frontend
+Seluruh endpoint (kecuali register/login/refresh) bisa diakses user terautentikasi apa
+pun. User dengan role `STUDENT` dapat membuat dan menghapus facility maupun complaint.
+Role hanya membatasi **tampilan** di frontend.
 
-| Backend | Frontend |
-| --- | --- |
-| `PENDING` | `submitted` |
-| `IN_PROGRESS` | `in_progress` |
-| `RESOLVED` | `resolved` |
-| `REJECTED` | — |
-| — | `verified` |
-
-Perlu pemetaan saat integrasi.
+Detail: [`backend/README.md` §8](backend/README.md).
 
 ### 13.5 Upload foto belum didukung backend
 
-Field `image` ada di model `Complaint` tetapi **tidak** terdaftar di serializer, sehingga
-tidak dapat dikirim melalui API. UI unggah foto di `CreateComplaint.tsx` belum
-terhubung.
+Field `image` ada di model `Complaint` tetapi **tidak** terdaftar di serializer,
+sehingga tidak dapat dikirim melalui API. UI unggah foto di `CreateComplaint.tsx`
+belum terhubung.
 
-### 13.6 Belum ada pembatasan akses berbasis role
-
-Seluruh endpoint (kecuali register/login/refresh) bisa diakses user terautentikasi apa pun.
-User dengan role `STUDENT` dapat membuat dan menghapus facility maupun complaint.
-Detail di [`backend/README.md` §14](backend/README.md).
-
-### 13.7 Refresh token lama masih dapat dipakai
+### 13.6 Refresh token lama masih dapat dipakai
 
 App `rest_framework_simplejwt.token_blacklist` tidak terpasang, sehingga
 `BLACKLIST_AFTER_ROTATION` tidak berefek. Logout harus dilakukan sepenuhnya di sisi
 frontend (hapus token dari `localStorage`).
 
-### 13.8 Branch aktif adalah `main`
+### 13.7 Route `/complaints/:id` belum terdaftar
 
-Repository saat ini berada di branch `main`, sedangkan sebagian besar pekerjaan UI
-dilakukan di branch `ui`. Pastikan untuk checkout branch yang benar sebelum melakukan commit.
+`ComplaintCard.tsx` menautkan ke `/complaints/{id}`, tetapi route tersebut belum
+didefinisikan di `AppRoutes.tsx`, sehingga membuka tautan itu berakhir di halaman 404.
+Saat ini halaman Dashboard dan Pengaduan masih menautkan ke `/complaints` agar tidak
+memicu ini.
+
+### 13.8 CORS hanya mengizinkan `localhost:5173`
+
+`CORS_ALLOWED_ORIGINS` di `backend/config/settings.py` hanya berisi
+`http://localhost:5173`, sedangkan `frontend/.env` memakai `127.0.0.1`. Jika Vite
+dibuka lewat `http://127.0.0.1:5173`, seluruh request API akan diblokir CORS.
+Gunakan `http://localhost:5173`, atau tambahkan origin-nya ke backend.
 
 ---
 
@@ -440,6 +495,32 @@ dilakukan di branch `ui`. Pastikan untuk checkout branch yang benar sebelum mela
 
 | Nama | Kontribusi |
 | --- | --- |
-| **Rizky Akbar** | Seluruh commit pada repository ini (9 commit) |
+| **Rizky Akbar** | Seluruh commit pada repository ini |
 
 Repository ini belum memiliki file `LICENSE`, sehingga status lisensinya belum ditentukan.
+
+---
+
+## 15. Yang Sudah Diperbaiki
+
+Catatan perubahan agar tidak ada duplikasi dengan [§13](#13-known-issues).
+
+| # | Masalah | Perbaikan |
+| --- | --- | --- |
+| 1 | `ProtectedRoute` tidak dipakai di routing — dashboard terbuka tanpa token | Dipasang di `AppRoutes.tsx` untuk seluruh route area dashboard |
+| 2 | `jwt-decode` tidak ada di `package.json` — build gagal di mesin baru | Ditambahkan ke `package.json` **dan** `package-lock.json` |
+| 3 | URL refresh token menggandakan `/api` → `/api/api/auth/refresh/` | Dipindah ke axios interceptor dengan path `/auth/refresh/` |
+| 4 | Infinite redirect loop karena fallback guard menuju route yang sama | Fallback diubah ke `/forbidden`, route `/admin` dipisah |
+| 5 | `Login.tsx` tidak mengisi `AuthContext` sehingga nama tampil "Pengguna" | `Login.tsx` memanggil `refreshUser()` sebelum `navigate()` |
+| 6 | Tidak ada refresh token otomatis — sesi putus setelah 30 menit | Response interceptor di `services/api.ts` |
+| 7 | Dashboard masih memakai data hardcoded (24 / 06 / 15) | Diambil dari `GET /api/complaints/`, agregat dihitung nyata |
+| 8 | Status frontend (`submitted`, `verified`) tidak cocok backend | `StatusBadge` sekarang memakai `PENDING` / `IN_PROGRESS` / `RESOLVED` / `REJECTED` |
+| 9 | `npm run lint` menghasilkan 4 error | Sekarang **0 error** (`any` diganti `unknown` + `axios.isAxiosError`) |
+
+### Perubahan route
+
+| Route | Sebelum | Sesudah |
+| --- | --- | --- |
+| `/dashboard` | `ProtectedRoute allowedRoles={["ADMIN"]}` | `DashboardRedirector` → dashboard user, atau redirect `/admin` bila ADMIN |
+| `/admin` | — | `ProtectedRoute allowedRoles={["ADMIN"]}` |
+| `/forbidden` | — | Halaman 403 |

@@ -8,10 +8,13 @@ import {
   UserRound,
 } from "lucide-react";
 import api from "../../services/api";
+import axios from "axios";
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../../constant";
+import { useAuth } from "../../contexts/AuthContext";
 
 function Login() {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
@@ -37,14 +40,23 @@ function Login() {
       localStorage.setItem(ACCESS_TOKEN, access);
       localStorage.setItem(REFRESH_TOKEN, refresh);
 
-      navigate("/dashboard");
-    } catch (error: any) {
-      console.error("LOGIN ERROR:", error);
-      console.error("RESPONSE:", error.response?.data);
+      // Guard ProtectedRoute membaca user dari context, jadi harus terisi
+      // sebelum navigate. Tanpa ini user masih null saat guard dievaluasi.
+      const user = await refreshUser();
 
-      if (error.response?.status === 401) {
+      if (user) {
+        navigate(user.role === "ADMIN" ? "/admin" : "/dashboard");
+      } else {
+        setError("Login berhasil, tetapi data pengguna gagal dimuat.");
+      }
+    } catch (error: unknown) {
+      console.error("LOGIN ERROR:", error);
+
+      const response = axios.isAxiosError(error) ? error.response : undefined;
+
+      if (response?.status === 401) {
         setError("Username atau password salah.");
-      } else if (error.response) {
+      } else if (response) {
         setError("Terjadi kesalahan pada server.");
       } else {
         setError("Tidak dapat terhubung ke server.");

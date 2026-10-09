@@ -117,6 +117,7 @@
   .glass-panel,
   .glass-card,
   .glass-panel-dark,
+  .glass-sidebar,
   .glass-nav {
     position: relative;
     isolation: isolate;
@@ -230,6 +231,122 @@
       rgba(255, 255, 255, 0.14) 26%,
       rgba(255, 255, 255, 0) 52%
     );
+  }
+
+  /* --- Sidebar: sits between .glass-nav and .glass-card in opacity ---------
+     The rail and the topbar share the same backdrop, so they must share the
+     same film density too — the rail is a touch denser than the nav (it has
+     text down its whole height) but nowhere near the old white/0.70 that read
+     as a flat whitesheet next to the translucent header.
+     ---------------------------------------------------------------------- */
+
+  .glass-sidebar {
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.62);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+      inset 0 -1px 0 0 rgba(148, 163, 184, 0.2),
+      0 32px 70px -34px rgba(49, 46, 129, 0.34),
+      0 10px 24px -18px rgba(49, 46, 129, 0.2);
+    backdrop-filter: blur(30px) saturate(190%);
+    -webkit-backdrop-filter: blur(30px) saturate(190%);
+  }
+
+  /* Thin sheen — lighter than .glass-panel-dark so the orbs still read
+     through the rail instead of being washed out */
+  .glass-sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      176deg,
+      rgba(255, 255, 255, 0.45) 0%,
+      rgba(255, 255, 255, 0.1) 26%,
+      rgba(255, 255, 255, 0) 52%
+    );
+  }
+
+  /* Hairline down the trailing edge — gives the rail a lit boundary where it
+     meets the content instead of dissolving into the ambient field */
+  .glass-sidebar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    z-index: -1;
+    width: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0.4) 45%,
+      rgba(255, 255, 255, 0.15) 100%
+    );
+  }
+
+  /* --- Sidebar nav rows --------------------------------------------------
+     Active state is bright glass, not a saturated gradient: the whole page
+     uses colour only in thin tints, so one solid indigo block read as a
+     foreign object. The 3px accent bar is the single saturated element in
+     the rail and carries the "you are here" signal on its own.
+     ---------------------------------------------------------------------- */
+
+  .nav-link {
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475569;
+    transition:
+      background 260ms var(--ease-liquid),
+      border-color 260ms var(--ease-liquid),
+      color 260ms var(--ease-liquid),
+      box-shadow 260ms var(--ease-liquid),
+      transform 260ms var(--ease-liquid);
+  }
+
+  .nav-link:hover {
+    border-color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.45);
+    color: #0f172a;
+    transform: translateX(2px);
+  }
+
+  .nav-link-active {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.55);
+    color: #0f172a;
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+      0 12px 24px -14px rgba(49, 46, 129, 0.35);
+  }
+
+  .nav-link-active:hover {
+    background: rgba(255, 255, 255, 0.62);
+  }
+
+  .nav-link-accent {
+    position: relative;
+  }
+
+  .nav-link-accent::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: #6366f1;
+    transform: translateY(-50%);
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.55);
+  }
+
+  .nav-link:focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
   }
 
   .glass-nav {
@@ -647,6 +764,7 @@
 @media (prefers-reduced-motion: reduce) {
   .glass-card,
   .glass-card-hover,
+  .nav-link,
   .btn-primary,
   .btn-secondary,
   .icon-button,
@@ -657,6 +775,7 @@
   }
 
   .glass-card-hover:hover,
+  .nav-link:hover,
   .btn-primary:hover:not(:disabled),
   .btn-secondary:hover,
   .icon-button:hover {

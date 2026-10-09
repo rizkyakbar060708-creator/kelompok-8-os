@@ -353,6 +353,27 @@ Satu-satunya pembedaan hak akses yang benar-benar ada adalah flag `is_staff` /
 `/api/auth/register/` selalu dibuat dengan `is_staff=False` dan `is_superuser=False`,
 sehingga tidak bisa masuk ke Django admin.
 
+### 8.1 Frontend sudah role-gate, backend belum
+
+Ada asimetri yang perlu diketahui: frontend **sudah** membedakan tampilan berdasarkan role
+(route `/admin` hanya untuk `ADMIN`, menu disembunyikan untuk role lain), tetapi
+pembatasan itu murni di sisi client dan dapat dilewati.
+
+User `STUDENT` yang mengetahui URL `/api/complaints/` tetap bisa melihat, mengubah, dan
+menghapus seluruh pengaduan. aggregating dashboard di frontend bukan kontrol akses.
+
+Yang perlu ditambahkan di backend agar konsisten dengan frontend:
+
+| Yang perlu dibuat | Lokasi |
+| --- | --- |
+| `IsAdminRole` permission class | `apps/accounts/permissions.py` (belum ada) |
+| Scoping per user | `ComplaintListCreateView.get_queryset()` |
+| Paksa `reporter` dari token | `ComplaintListCreateView.perform_create()` |
+| Ownership check | `ComplaintDetailView.get_queryset()` |
+| Endpoint statistik | `GET /api/complaints/stats/` dengan gate `IsAdminRole` |
+
+Detail di [`../frontend/README.md` §13](../frontend/README.md).
+
 ---
 
 ## 9. Ringkasan Endpoint
@@ -1019,9 +1040,9 @@ Frontend wajib menyimpan keduanya. `Login.tsx` saat ini sudah melakukannya.
 
 ### 4. Access token hanya berlaku 30 menit
 
-`Login.tsx` saat ini tidak memasang interceptor refresh otomatis. Setelah 30 menit seluruh
-request akan mendapat `401` dan user harus login ulang. Untuk UX lebih baik, tambahkan
-retry interceptor di service axios yang memanggil `/api/auth/refresh/` saat menerima 401.
+**Sudah ditangani di frontend.** `frontend/src/services/api.ts` memasang response
+interceptor yang mencoba `POST /api/auth/refresh/` saat menerima 401, lalu mengulang
+request aslinya. Bila refresh gagal, token dihapus dan user diarahkan ke `/login`.
 
 ### 5. Wajib simpan refresh token terbaru
 
@@ -1033,25 +1054,21 @@ baru. Token lama masih berlaku, jadi tidak ada konflik, tetapi tetap simpan yang
 Backend **tidak** mengambil `reporter` dari token. Client wajib mengirim `reporter` dengan
 id user. Ambil id ini dari `GET /api/auth/me/` (field `id`).
 
-### 7. Status Complaint di backend berbeda dari enum di frontend
+> **Perhatian:** frontend saat ini memfilter pengaduan berdasarkan
+> `reporter === user.id` di browser, tapi karena backend mengembalikan seluruh pengaduan
+> ke semua pengguna, filter itu bukan batas keamanan. Lihat
+> [`../README.md` §13.2](../README.md).
+
+### 7. Status Complaint
 
 Backend memakai: `PENDING`, `IN_PROGRESS`, `RESOLVED`, `REJECTED`.
 
-Frontend saat ini memakai: `submitted`, `verified`, `in_progress`, `resolved`.
-
-**Keduanya tidak cocok.** Frontend perlu memetaikan nilai tersebut:
-
-| Backend | Frontend (saat ini) |
-| --- | --- |
-| `PENDING` | `submitted` |
-| `IN_PROGRESS` | `in_progress` |
-| `RESOLVED` | `resolved` |
-| `REJECTED` | — |
-| — | `verified` |
+**Frontend sekarang sudah cocok.** `StatusBadge.tsx` memakai empat nilai uppercase yang
+sama, dan dashboard admin menghitung agregat langsung dari nilai tersebut.
 
 ### 8. Field `image` belum bisa dipakai
 
-`CreateComplaint.tsx` saat ini punya UI upload foto, tetapi **backend belum menerima field
+`CreateComplaint.tsx` punya UI upload foto, tetapi **backend belum menerima field
 `image`** karena tidak terdaftar di serializer. Upload tidak akan tersimpan dan tidak akan
 muncul di response.
 
@@ -1078,6 +1095,11 @@ Keduanya perlu ditangani dengan mengarahkan user ke halaman login atau mencoba r
 Backend hanya mengizinkan origin `http://localhost:5173` (`config/settings.py:66`), yaitu
 port default Vite. Jika frontend dijalankan di port lain, request akan diblokir CORS.
 
+> **Gotcha:** `http://127.0.0.1:5173` **tidak** tercantum, padahal `frontend/.env`
+> memakai `127.0.0.1` untuk `VITE_API_URL`. Itu tidak masalah — yang diperiksa browser
+> adalah origin halaman frontend, bukan `VITE_API_URL`. Tapi buka frontend lewat
+> `http://127.0.0.1:5173` akan gagal. Gunakan `http://localhost:5173`.
+
 ---
 
 ## 13. Endpoint yang Belum Tersedia
@@ -1096,7 +1118,7 @@ Bagian ini sengaja dicantumkan agar tidak disalahartikan sebagai endpoint yang a
 | Filter / search / sort pada list | **Belum tersedia** | Tidak ada query parameter di endpoint list |
 | Paginasi | **Belum tersedia** | `ListCreateAPIView` tanpa pagination class |
 | Endpoint khusus admin/staff | **Belum tersedia** | Tidak ada permission berbasis role; semua user akses sama |
-| Dashboard / statistik | **Belum tersedia** | Tidak ada endpoint agregasi |
+| Dashboard / statistik | **Belum tersedia** | Tidak ada endpoint agregasi. Dashboard admin di frontend menghitung sendiri dari `GET /complaints/` |
 | Verifikasi email / reset password | **Belum tersedia** | Tidak ada email verification |
 
 ### 13.2 Catatan tentang Django admin
@@ -1164,3 +1186,9 @@ dikonfirmasi:
 | Password pendek `"123"` | Diterima (`201`) |
 | `permissions.py` | Tidak ada di project |
 | Environment variables | Tidak ada |
+| `makemigrations --check` | `No changes detected` |
+
+> Verifikasi di atas berlaku untuk kode backend, yang **tidak berubah** dalam
+> pembaruan terakhir. Yang berubah adalah frontend — lihat
+> [`../README.md` §15](../README.md) dan
+> [`../frontend/README.md` §18](../frontend/README.md).

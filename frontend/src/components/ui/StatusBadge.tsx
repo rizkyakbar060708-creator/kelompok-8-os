@@ -1,31 +1,32 @@
+type Status =
+  | "PENDING"
+  | "IN_PROGRESS"
+  | "RESOLVED"
+  | "REJECTED"
+
 interface StatusBadgeProps {
-  status: "submitted" | "verified" | "in_progress" | "resolved"
+  status: Status
 }
 
-const statusConfig = {
-  submitted: {
-    label: "Diajukan",
-    dotClassName: "bg-slate-500",
-    pillClassName:
-      "border-white/70 bg-slate-100/90 text-slate-700",
+const statusConfig: Record<
+  Status,
+  { label: string; className: string }
+> = {
+  PENDING: {
+    label: "Menunggu",
+    className: "bg-amber-100 text-amber-700",
   },
-  verified: {
-    label: "Diverifikasi",
-    dotClassName: "bg-sky-600",
-    pillClassName:
-      "border-sky-200 bg-sky-50/95 text-sky-800",
-  },
-  in_progress: {
+  IN_PROGRESS: {
     label: "Diproses",
-    dotClassName: "bg-amber-600",
-    pillClassName:
-      "border-amber-200 bg-amber-50/95 text-amber-900",
+    className: "bg-blue-100 text-blue-700",
   },
-  resolved: {
+  RESOLVED: {
     label: "Selesai",
-    dotClassName: "bg-emerald-600",
-    pillClassName:
-      "border-emerald-200 bg-emerald-50/95 text-emerald-800",
+    className: "bg-emerald-100 text-emerald-700",
+  },
+  REJECTED: {
+    label: "Ditolak",
+    className: "bg-red-100 text-red-700",
   },
 }
 
@@ -34,10 +35,8 @@ function StatusBadge({ status }: StatusBadgeProps) {
 
   return (
     <span
-      className={`glass-pill shrink-0 gap-1.5 px-2.5 py-1 text-xs font-semibold ${config.pillClassName}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ${config.className}`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${config.dotClassName}`} />
-
       {config.label}
     </span>
   )

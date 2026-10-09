@@ -1,13 +1,24 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
-import { Bell, ClipboardList, FileText, Home, LogOut, Menu, User, X } from "lucide-react"
+import {
+  Bell,
+  ClipboardList,
+  FileText,
+  Home,
+  LogOut,
+  Menu,
+  ShieldCheck,
+  User,
+  X,
+} from "lucide-react"
 import { useState } from "react"
 
 import { useAuth } from "../contexts/AuthContext"
 
 const navItems = [
-  { name: "Dashboard", path: "/dashboard", icon: Home },
-  { name: "Pengaduan", path: "/complaints", icon: FileText },
-  { name: "Profil", path: "/profile", icon: User },
+  { name: "Dashboard", path: "/dashboard", icon: Home, adminOnly: false },
+  { name: "Pengaduan", path: "/complaints", icon: FileText, adminOnly: false },
+  { name: "Admin", path: "/admin", icon: ShieldCheck, adminOnly: true },
+  { name: "Profil", path: "/profile", icon: User, adminOnly: false },
 ]
 
 function DashboardLayout() {
@@ -38,9 +49,9 @@ function DashboardLayout() {
       )}
 
       <aside
-        className={`glass-panel-dark fixed inset-y-0 left-0 z-50 flex w-[17.5rem] transform flex-col text-slate-700 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`glass-sidebar fixed inset-y-0 left-0 z-50 flex w-[17.5rem] transform flex-col text-slate-700 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex h-20 items-center justify-between border-b border-white/60 px-5">
+        <div className="flex h-20 items-center justify-between border-b border-white/45 px-5">
           <NavLink
             to="/dashboard"
             className="flex items-center gap-3"
@@ -75,33 +86,33 @@ function DashboardLayout() {
           </p>
 
           <div className="space-y-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon
+            {navItems
+              .filter((item) => !item.adminOnly || user?.role === "ADMIN")
+              .map((item) => {
+                const Icon = item.icon
 
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={({ isActive }) =>
-                    `group flex items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition ${
-                      isActive
-                        ? "border-white/70 bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.28),0_12px_24px_-12px_rgba(79,70,229,0.85)]"
-                        : "border-transparent text-slate-600 hover:border-white/70 hover:bg-white/70 hover:text-slate-900"
-                    }`
-                  }
-                >
-                  <Icon size={18} />
-                  {item.name}
-                </NavLink>
-              )
-            })}
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      `group flex items-center gap-3 rounded-xl border py-3 pl-4 pr-3 text-sm font-medium ${
+                        isActive ? "nav-link-active nav-link-accent" : "nav-link"
+                      }`
+                    }
+                  >
+                    <Icon size={18} />
+                    {item.name}
+                  </NavLink>
+                )
+              })}
           </div>
         </nav>
 
-        <div className="m-3 rounded-2xl border border-white/70 bg-white/55 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.85),0_10px_24px_-20px_rgba(49,46,129,0.6)] backdrop-blur-md">
+        <div className="glass-card glass-card-hover m-3 rounded-2xl p-3">
           <div className="flex items-center gap-3 px-1 py-1.5">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/70 bg-white/70 text-xs font-bold text-slate-700 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9)] backdrop-blur-md">
+            <span className="brand-mark h-9 w-9 shrink-0 rounded-xl text-xs font-bold">
               {initial}
             </span>
 

@@ -3,13 +3,19 @@ import { Link } from "react-router-dom"
 
 import StatusBadge from "../ui/StatusBadge"
 
+type Status =
+  | "PENDING"
+  | "IN_PROGRESS"
+  | "RESOLVED"
+  | "REJECTED"
+
 interface ComplaintCardProps {
   id: number
   title: string
   category: string
   location: string
   date: string
-  status: "submitted" | "verified" | "in_progress" | "resolved"
+  status: Status
 }
 
 function ComplaintCard({
@@ -48,7 +54,7 @@ function ComplaintCard({
         </div>
       </div>
 
-      <div className="mt-5 border-t border-slate-900/[0.08] pt-4">
+      <div className="mt-5 border-t border-slate-900/8 pt-4">
         <Link
           to={`/complaints/${id}`}
           className="flex items-center justify-end gap-1 rounded text-sm font-semibold text-indigo-600 transition group-hover:text-violet-700 hover:text-violet-700"

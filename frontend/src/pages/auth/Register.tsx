@@ -8,6 +8,7 @@ import {
   UserRound,
 } from "lucide-react";
 import api from "../../services/api";
+import axios from "axios";
 
 function Register() {
   const navigate = useNavigate();
@@ -38,9 +39,11 @@ function Register() {
       await api.post("/auth/register/", formData);
 
       navigate("/login");
-    } catch (error: any) {
-      if (error.response?.data) {
-        const data = error.response.data;
+    } catch (error: unknown) {
+      const response = axios.isAxiosError(error) ? error.response : undefined;
+
+      if (response?.data) {
+        const data = response.data as Record<string, string[] | undefined>;
 
         if (data.username) {
           setError(data.username[0]);

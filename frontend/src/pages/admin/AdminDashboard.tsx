@@ -4,14 +4,14 @@ import {
   CircleAlert,
   Clock3,
   FileText,
-  Plus,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 
 import Card from "../../components/ui/Card"
 import StatusBadge from "../../components/ui/StatusBadge"
-import { useAuth } from "../../contexts/AuthContext"
 import { getComplaints } from "../../services/complaintService"
 import { getFacilities } from "../../services/facilityService"
 import {
@@ -22,10 +22,9 @@ import {
   type ComplaintRow,
 } from "../../utils/complaintStats"
 
-const MAX_RECENT = 5
+const MAX_RECENT = 6
 
-function Dashboard() {
-  const { user } = useAuth()
+function AdminDashboard() {
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [error, setError] = useState("")
 
@@ -43,13 +42,7 @@ function Dashboard() {
           return
         }
 
-        // Filter hanya untuk tampilan. Endpoint /complaints/ masih mengembalikan
-        // seluruh pengaduan untuk siapa pun, jadi ini bukan batas akses.
-        const mine = complaints.filter(
-          (complaint) => complaint.reporter === user?.id,
-        )
-
-        setRows(joinFacilities(mine, facilities))
+        setRows(joinFacilities(complaints, facilities))
         setError("")
       } catch {
         if (!active) {
@@ -66,35 +59,46 @@ function Dashboard() {
     return () => {
       active = false
     }
-  }, [user?.id])
+  }, [])
 
   const stats = buildStats(rows ?? [])
   const recent = (rows ?? []).slice(0, MAX_RECENT)
 
+  // TODO(backend): agregasi ini dihitung di client dari list penuh karena
+  // GET /api/complaints/stats/ belum ada. Begitu endpoint-nya tersedia,
+  // ganti buildStats(rows) dengan response dari server.
   const metrics = [
     {
       label: "Total pengaduan",
       value: String(stats.total),
-      detail: `${stats.pending} menunggu`,
+      detail: "Seluruh pelapor",
       icon: FileText,
       orb: "bg-sky-400/25",
       tone: "border-sky-200 bg-sky-50/90 text-sky-700",
     },
     {
-      label: "Sedang diproses",
-      value: String(stats.inProgress),
-      detail: "Butuh perhatian",
+      label: "Menunggu",
+      value: String(stats.pending),
+      detail: `${stats.inProgress} sedang diproses`,
       icon: Clock3,
       orb: "bg-amber-300/25",
       tone: "border-amber-200 bg-amber-50/90 text-amber-700",
     },
     {
-      label: "Telah selesai",
+      label: "Selesai",
       value: String(stats.resolved),
       detail: `${formatRate(stats.resolutionRate)} terselesaikan`,
       icon: CheckCircle2,
       orb: "bg-emerald-300/25",
       tone: "border-emerald-200 bg-emerald-50/90 text-emerald-700",
+    },
+    {
+      label: "Ditolak",
+      value: String(stats.rejected),
+      detail: "Perlu tinjauan ulang",
+      icon: XCircle,
+      orb: "bg-rose-300/25",
+      tone: "border-rose-200 bg-rose-50/90 text-rose-700",
     },
   ]
 
@@ -102,16 +106,16 @@ function Dashboard() {
     <div className="mx-auto max-w-7xl space-y-6">
       <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
-          <p className="eyebrow mb-2">Ringkasan aktivitas</p>
-          <h1 className="page-title">Dashboard</h1>
+          <p className="eyebrow mb-2">Panel administrator</p>
+          <h1 className="page-title">Dashboard Admin</h1>
           <p className="page-subtitle">
-            Tetap terhubung dengan kondisi fasilitas kampus.
+            Pantau seluruh pengaduan fasilitas kampus.
           </p>
         </div>
 
-        <Link to="/complaints/create" className="btn-primary w-full sm:w-auto">
-          <Plus size={18} />
-          Buat Pengaduan
+        <Link to="/complaints" className="btn-primary w-full sm:w-auto">
+          <ShieldCheck size={18} />
+          Kelola Pengaduan
         </Link>
       </section>
 
@@ -121,7 +125,7 @@ function Dashboard() {
         </p>
       )}
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => {
           const Icon = metric.icon
 
@@ -161,7 +165,7 @@ function Dashboard() {
                 Pengaduan terbaru
               </h2>
               <p className="mt-1 text-xs text-slate-500">
-                Status laporan yang terakhir diperbarui.
+                Seluruh laporan dari semua pengguna.
               </p>
             </div>
 
@@ -189,10 +193,10 @@ function Dashboard() {
                 <FileText size={20} />
               </span>
               <p className="mt-4 text-sm font-semibold text-slate-800">
-                Belum ada pengaduan
+                Belum ada pengaduan masuk
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Laporan yang kamu kirim akan muncul di sini.
+                Laporan dari pengguna akan muncul di sini.
               </p>
             </div>
           ) : (
@@ -212,7 +216,8 @@ function Dashboard() {
                       {complaint.title}
                     </span>
                     <span className="mt-1 block truncate text-xs text-slate-500">
-                      {complaint.location} · {formatDate(complaint.created_at)}
+                      {complaint.facilityName} · {complaint.location} ·{" "}
+                      {formatDate(complaint.created_at)}
                     </span>
                   </span>
 
@@ -233,16 +238,16 @@ function Dashboard() {
             </span>
 
             <h2 className="mt-5 text-lg font-semibold tracking-tight text-slate-900">
-              Butuh tindak lanjut?
+              Perlu ditinjau
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Lengkapi detail lokasi dan foto agar laporan dapat ditangani
-              lebih cepat.
+              {stats.pending} pengaduan menunggu dan {stats.rejected} ditolak.
+              Prioritaskan laporan dengan status tertunda.
             </p>
 
-            <Link to="/complaints/create" className="btn-secondary mt-5">
-              Buat laporan
+            <Link to="/complaints" className="btn-secondary mt-5">
+              Buka daftar pengaduan
             </Link>
           </div>
         </Card>
@@ -251,4 +256,4 @@ function Dashboard() {
   )
 }
 
-export default Dashboard
+export default AdminDashboard
