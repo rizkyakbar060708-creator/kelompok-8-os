@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework_simplejwt.views import (
@@ -25,3 +27,8 @@ urlpatterns = [
     path("api/facilities/", include("apps.facilities.urls")),
     path("api/complaints/", include("apps.complaints.urls")),
 ]
+
+# Django tidak menyajikan MEDIA_ROOT sendiri. static() sengaja hanya aktif saat
+# DEBUG; di produksi file upload harus dilayani web server (nginx, whitenoise).
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

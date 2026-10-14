@@ -70,7 +70,7 @@ function Login() {
     <div className="app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
       <div className="orb -left-24 top-10 h-88 w-88 bg-blue-500/35" />
       <div className="orb -right-28 bottom-0 h-88 w-88 bg-violet-500/30" />
-      <div className="orb left-1/2 top-[-7rem] h-80 w-80 -translate-x-1/2 bg-pink-400/28" />
+      <div className="orb left-1/2 -top-28 h-80 w-80 -translate-x-1/2 bg-pink-400/28" />
       <div className="orb bottom-[6%] right-[18%] h-72 w-72 bg-amber-300/25" />
 
       <div className="relative w-full max-w-md">
@@ -103,7 +103,7 @@ function Login() {
 
           {error && (
             <div role="alert" aria-live="polite" className="alert-error relative mb-5 flex items-start gap-3 rounded-xl px-4 py-3 text-sm">
-              <TriangleAlert size={17} className="mt-0.5 shrink-0 text-red-300" />
+              <TriangleAlert size={17} className="mt-0.5 shrink-0 text-red-700" />
               <span>{error}</span>
             </div>
           )}
@@ -112,7 +112,7 @@ function Login() {
             <div>
               <label
                 htmlFor="username"
-                className="mb-2 block text-sm font-medium text-slate-200"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Username
               </label>
@@ -120,7 +120,7 @@ function Login() {
               <div className="relative">
                 <UserRound
                   size={17}
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600"
                 />
 
                 <input
@@ -140,7 +140,7 @@ function Login() {
             <div>
               <label
                 htmlFor="password"
-                className="mb-2 block text-sm font-medium text-slate-200"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Password
               </label>
@@ -161,7 +161,7 @@ function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/80 hover:text-slate-900"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-600 transition hover:bg-white/80 hover:text-slate-900"
                   aria-label={
                     showPassword ? "Sembunyikan password" : "Tampilkan password"
                   }
@@ -171,16 +171,16 @@ function Login() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <input
                 id="remember"
                 type="checkbox"
-                className="h-4 w-4 cursor-pointer rounded border-white/20 bg-white/[0.07] accent-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                className="h-4 w-4 cursor-pointer rounded border-slate-300 bg-white/70 accent-indigo-600 focus:ring-2 focus:ring-indigo-500/40"
               />
 
               <label
                 htmlFor="remember"
-                className="cursor-pointer text-sm text-slate-400"
+                className="cursor-pointer text-sm text-slate-600"
               >
                 Ingat saya
               </label>

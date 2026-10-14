@@ -147,6 +147,19 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 
+# Uploaded files (Complaint.image). Disajikan lewat static() di config/urls.py
+# dan hanya saat DEBUG, jadi di produksi harus ditangani web server.
+MEDIA_URL = '/media/'
+
+MEDIA_ROOT = BASE_DIR / 'media'
+
+
+# Naikkan dari default 2.5 MB supaya file foto sampai ke serializer dan
+# ditolak di validate_image dengan pesan yang jelas. Batas 5 MB untuk foto
+# ditegakkan di serializer, bukan di sini.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
+
+
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 

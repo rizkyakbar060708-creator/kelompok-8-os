@@ -10,6 +10,7 @@ import AdminDashboard from "../pages/admin/AdminDashboard";
 import Complaints from "../pages/user/Complaints";
 import Profile from "../pages/user/Profile";
 import CreateComplaint from "../pages/user/CreateComplaint";
+import ComplaintDetail from "../pages/user/ComplaintDetail";
 
 import DashboardRedirector from "../components/auth/DashboardRedirector";
 
@@ -46,6 +47,7 @@ function AppRoutes() {
 
         <Route path="/complaints" element={<Complaints />} />
         <Route path="/complaints/create" element={<CreateComplaint />} />
+        <Route path="/complaints/:id" element={<ComplaintDetail />} />
         <Route path="/profile" element={<Profile />} />
       </Route>
 

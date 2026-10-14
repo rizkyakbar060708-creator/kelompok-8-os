@@ -8,33 +8,54 @@ import {
   getComplaints,
   type Complaint,
 } from "../../services/complaintService"
+import { getFacilities } from "../../services/facilityService"
+import { joinFacilities, type ComplaintRow } from "../../utils/complaintStats"
 
 type Status = Complaint["status"] | "all"
 
 function Complaints() {
-  const [complaints, setComplaints] = useState<Complaint[]>([])
+  const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<Status>("all")
-  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
 
   useEffect(() => {
+    let active = true
+
     const fetchComplaints = async () => {
       try {
-        setIsLoading(true)
-        setError("")
+        // Serializer mengembalikan facility sebagai integer PK, jadi nama dan
+        // lokasi diambil dari daftar fasilitas lalu di-join di client.
+        const [complaints, facilities] = await Promise.all([
+          getComplaints(),
+          getFacilities(),
+        ])
 
-        const data = await getComplaints()
-        setComplaints(data)
+        if (!active) {
+          return
+        }
+
+        setRows(joinFacilities(complaints, facilities))
+        setError("")
       } catch {
+        if (!active) {
+          return
+        }
+
+        setRows([])
         setError("Gagal memuat pengaduan. Periksa koneksi ke server.")
-      } finally {
-        setIsLoading(false)
       }
     }
 
     void fetchComplaints()
+
+    return () => {
+      active = false
+    }
   }, [])
+
+  const complaints = rows ?? []
+  const isLoading = rows === null
 
   const filteredComplaints = complaints.filter((complaint) => {
     const matchesSearch = complaint.title
@@ -128,7 +149,7 @@ function Complaints() {
               id={complaint.id}
               title={complaint.title}
               category={`Prioritas ${complaint.priority}`}
-              location={`Fasilitas #${complaint.facility}`}
+              location={`${complaint.facilityName} · ${complaint.location}`}
               date={new Date(complaint.created_at).toLocaleDateString(
                 "id-ID",
                 {

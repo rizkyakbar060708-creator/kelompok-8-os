@@ -398,8 +398,10 @@
       background 220ms var(--ease-liquid);
   }
 
+  /* slate-400 hanya 2.5:1 di atas film putih .input-base, jadi placeholder
+     hampir tidak terbaca. slate-500 tembus 4.7:1 (WCAG AA). */
   .input-base::placeholder {
-    color: #94a3b8;
+    color: #64748b;
   }
 
   .input-base:hover:not(:focus) {

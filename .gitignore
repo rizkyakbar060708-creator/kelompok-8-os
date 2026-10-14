@@ -15,6 +15,9 @@ node_modules/
 dist/
 build/
 
+# Uploaded files (Complaint.image) - jangan pernah masuk repo
+media/
+
 # IDE
 .vscode/
 .idea/

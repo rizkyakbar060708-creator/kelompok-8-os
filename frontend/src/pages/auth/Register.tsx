@@ -97,7 +97,7 @@ function Register() {
 
           {error && (
             <div role="alert" aria-live="polite" className="alert-error relative mb-5 flex items-start gap-3 rounded-xl px-4 py-3 text-sm">
-              <TriangleAlert size={17} className="mt-0.5 shrink-0 text-red-300" />
+              <TriangleAlert size={17} className="mt-0.5 shrink-0 text-red-700" />
               <span>{error}</span>
             </div>
           )}
@@ -106,7 +106,7 @@ function Register() {
             <div>
               <label
                 htmlFor="username"
-                className="mb-2 block text-sm font-medium text-slate-200"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Username
               </label>
@@ -114,7 +114,7 @@ function Register() {
               <div className="relative">
                 <UserRound
                   size={17}
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600"
                 />
 
                 <input
@@ -134,7 +134,7 @@ function Register() {
             <div>
               <label
                 htmlFor="password"
-                className="mb-2 block text-sm font-medium text-slate-200"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Password
               </label>
@@ -155,7 +155,7 @@ function Register() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/80 hover:text-slate-900"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-600 transition hover:bg-white/80 hover:text-slate-900"
                   aria-label={
                     showPassword ? "Sembunyikan password" : "Tampilkan password"
                   }
