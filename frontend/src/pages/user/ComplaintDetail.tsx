@@ -18,6 +18,7 @@ import {
 } from "../../services/complaintService"
 import { getFacilities } from "../../services/facilityService"
 import { formatDate } from "../../utils/complaintStats"
+import { resolveMediaUrl } from "../../utils/media"
 
 const priorityLabels: Record<Complaint["priority"], string> = {
   LOW: "Rendah",
@@ -30,8 +31,10 @@ function ComplaintDetail() {
 
   // Diturunkan saat render, bukan di effect: id yang bukan angka sudah pasti
   // tidak valid, jadi tidak perlu menunggu fetch selesai untuk mengetahuinya.
+  // Number("") bernilai 0, jadi batas bawah 1 juga wajib dicek supaya id
+  // kosong tidak berubah jadi request ke /complaints/0/.
   const complaintId = Number(id)
-  const isInvalidId = !Number.isInteger(complaintId)
+  const isInvalidId = !Number.isInteger(complaintId) || complaintId < 1
 
   const [complaint, setComplaint] = useState<Complaint | null>(null)
   const [facilityName, setFacilityName] = useState("")
@@ -39,6 +42,7 @@ function ComplaintDetail() {
   const [isLoading, setIsLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState("")
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
     if (isInvalidId) {
@@ -48,23 +52,17 @@ function ComplaintDetail() {
     let active = true
 
     const load = async () => {
+      let detail: Complaint | null = null
+
       try {
-        const [detail, facilities] = await Promise.all([
-          getComplaintDetail(complaintId),
-          getFacilities(),
-        ])
+        detail = await getComplaintDetail(complaintId)
 
         if (!active) {
           return
         }
 
-        const facility = facilities.find(
-          (item) => item.id === detail.facility,
-        )
-
         setComplaint(detail)
-        setFacilityName(facility?.name ?? "Fasilitas tidak dikenal")
-        setLocation(facility?.location ?? "Lokasi tidak tersedia")
+        setNotFound(false)
         setError("")
       } catch (requestError: unknown) {
         if (!active) {
@@ -80,19 +78,44 @@ function ComplaintDetail() {
         } else {
           setError("Gagal memuat pengaduan. Coba muat ulang halaman.")
         }
+
+        return
       } finally {
         if (active) {
           setIsLoading(false)
         }
       }
+
+      // Nama fasilitas diambil setelah detail sukses, dan kegagalannya tidak
+      // boleh menjatuhkan halaman. Dengan Promise.all, error dari /facilities/
+      // ikut menggagalkan render padahal isi pengaduan sudah lengkap.
+      try {
+        const facilities = await getFacilities()
+
+        if (!active) {
+          return
+        }
+
+        const facility = facilities.find(
+          (item) => item.id === detail.facility,
+        )
+
+        setFacilityName(facility?.name ?? "Fasilitas tidak dikenal")
+        setLocation(facility?.location ?? "Lokasi tidak tersedia")
+      } catch {
+        if (active) {
+          setFacilityName("Fasilitas tidak dikenal")
+          setLocation("Lokasi tidak tersedia")
+        }
+      }
     }
 
-    load()
+    void load()
 
     return () => {
       active = false
     }
-  }, [isInvalidId, complaintId])
+  }, [isInvalidId, complaintId, retryKey])
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -153,10 +176,10 @@ function ComplaintDetail() {
 
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => setRetryKey((key) => key + 1)}
             className="btn-secondary"
           >
-            Muat ulang halaman
+            Coba lagi
           </button>
         </div>
       ) : (
@@ -188,11 +211,14 @@ function ComplaintDetail() {
           </Card>
 
           {/* image bisa null (tidak diunggah) atau string kosong untuk pengaduan
-              lama yang dibuat sebelum field ini ada, jadi dicek truthy. */}
+              lama yang dibuat sebelum field ini ada, jadi dicek truthy.
+              resolveMediaUrl mengubah "/media/..." menjadi URL absolut ke
+              origin backend; tanpa itu browser akan mencarinya di origin
+              frontend dan mendapat 404. */}
           {complaint.image && (
             <Card className="relative overflow-hidden">
               <img
-                src={complaint.image}
+                src={resolveMediaUrl(complaint.image) ?? ""}
                 alt={`Foto pengaduan: ${complaint.title}`}
                 className="relative w-full rounded-2xl object-cover"
               />

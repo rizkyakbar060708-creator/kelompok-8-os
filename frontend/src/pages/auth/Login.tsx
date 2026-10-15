@@ -50,12 +50,12 @@ function Login() {
         setError("Login berhasil, tetapi data pengguna gagal dimuat.");
       }
     } catch (error: unknown) {
-      console.error("LOGIN ERROR:", error);
-
       const response = axios.isAxiosError(error) ? error.response : undefined;
 
       if (response?.status === 401) {
         setError("Username atau password salah.");
+      } else if (response?.status === 429) {
+        setError("Terlalu banyak percobaan. Coba lagi beberapa saat lagi.");
       } else if (response) {
         setError("Terjadi kesalahan pada server.");
       } else {

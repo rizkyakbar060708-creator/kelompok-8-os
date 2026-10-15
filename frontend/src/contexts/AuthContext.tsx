@@ -98,6 +98,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    const refresh = localStorage.getItem(REFRESH_TOKEN);
+
+    // Pencabutan token di server dicoba dulu, tapi tidak pernah boleh menahan
+    // pembersihan lokal. Kalau request ini gagal atau bermasalah, sesi lokal
+    // tetap harus dibersihkan supaya user tidak terjebak di halaman yang
+    // membutuhkan login.
+    if (refresh) {
+      void api
+        .post("/auth/blacklist/", { refresh })
+        .catch(() => undefined);
+    }
+
     clearSession();
     setUser(null);
   };

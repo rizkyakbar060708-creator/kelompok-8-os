@@ -18,6 +18,10 @@ function Complaints() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<Status>("all")
   const [error, setError] = useState("")
+  // Retry memakai state, bukan window.location.reload(), supaya state aplikasi
+  // (filter pencarian, hasil scroll) tidak ikut hilang setiap kali user
+  // menekan tombol muat ulang.
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -52,7 +56,7 @@ function Complaints() {
     return () => {
       active = false
     }
-  }, [])
+  }, [retryKey])
 
   const complaints = rows ?? []
   const isLoading = rows === null
@@ -135,10 +139,10 @@ function Complaints() {
           <p>{error}</p>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => setRetryKey((key) => key + 1)}
             className="btn-secondary"
           >
-            Muat ulang halaman
+            Coba lagi
           </button>
         </div>
       ) : filteredComplaints.length > 0 ? (

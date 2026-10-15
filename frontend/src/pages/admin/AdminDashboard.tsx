@@ -204,7 +204,7 @@ function AdminDashboard() {
               {recent.map((complaint) => (
                 <Link
                   key={complaint.id}
-                  to="/complaints"
+                  to={`/complaints/${complaint.id}`}
                   className="group flex items-center gap-3 px-5 py-4 transition hover:bg-white/70 sm:px-6"
                 >
                   <span className="glass-chip h-10 w-10 shrink-0 border-white/70 bg-white/65 text-slate-500 transition group-hover:border-white/85 group-hover:bg-white/85 group-hover:text-indigo-600">

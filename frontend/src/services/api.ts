@@ -45,6 +45,14 @@ const refreshAccessToken = (): Promise<string | null> => {
 
       localStorage.setItem(ACCESS_TOKEN, access);
 
+      // Backend memakai ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION, jadi
+      // setiap refresh mengembalikan refresh token baru dan token lama langsung
+      // masuk blacklist. Kalau hasil rotasi tidak disimpan, SPA masih memegang
+      // token yang sudah dibatalkan dan request berikutnya akan 401.
+      if (response.data.refresh) {
+        localStorage.setItem(REFRESH_TOKEN, response.data.refresh);
+      }
+
       return access;
     })
     .catch(() => null)
@@ -67,9 +75,13 @@ api.interceptors.response.use(
       | (typeof error.config & { _retried?: boolean })
       | undefined;
 
+    // /auth/blacklist/ ikut dikecualikan. Panggilan itu justru sedang
+    // mencabut token, jadi mencoba refresh dan mengulangnya tidak ada
+    // gunanya dan hanya berisiko memicu rantai 401.
     const isAuthCall =
       original?.url?.includes("/auth/login/") ||
-      original?.url?.includes("/auth/refresh/");
+      original?.url?.includes("/auth/refresh/") ||
+      original?.url?.includes("/auth/blacklist/");
 
     if (error.response?.status === 401 && original && !original._retried && !isAuthCall) {
       original._retried = true;

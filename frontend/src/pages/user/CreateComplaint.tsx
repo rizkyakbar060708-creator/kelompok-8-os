@@ -15,8 +15,36 @@ import axios from "axios"
 import { createComplaint } from "../../services/complaintService"
 import { getFacilities, type Facility } from "../../services/facilityService"
 
+// Backend menyimpan title di CharField(max_length=200). Batas yang sama
+// dipasang di input supaya kesalahan ketahuan sebelum request dikirim, bukan
+// sesudahnya dalam bentuk respons 400.
+const MAX_TITLE_LENGTH = 200
+
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const MAX_IMAGE_SIZE_MB = MAX_IMAGE_SIZE_BYTES / (1024 * 1024)
+
+// Error 400 dari DRF berbentuk { field: [pesan, ...] }. Kalau hanya field image
+// dan facility yang dibaca, pesan untuk title, description, atau
+// non_field_errors ikut hilang dan user hanya melihat teks umum padahal
+// kesalahan-nya spesifik.
+function firstErrorMessage(
+  data: Record<string, unknown>,
+  fields: string[],
+): string | null {
+  for (const field of fields) {
+    const value = data[field]
+
+    if (Array.isArray(value) && typeof value[0] === "string") {
+      return value[0]
+    }
+
+    if (typeof value === "string") {
+      return value
+    }
+  }
+
+  return null
+}
 
 // location tersimpan sebagai "Gedung A - Lantai 3". Dipisah supaya daftar
 // bisa dikelompokkan per gedung lewat optgroup, dan opsi di dalam grup tidak
@@ -210,15 +238,39 @@ function CreateComplaint() {
 
       if (!response) {
         setError("Tidak dapat terhubung ke server.")
-      } else if (response.status === 401) {
-        setError("Sesi kamu habis. Silakan masuk kembali.")
-      } else if (response.status === 400) {
-        const data = response.data as Record<string, string[] | undefined>
-
-        setError(data.image?.[0] ?? data.facility?.[0] ?? "Data tidak valid.")
-      } else {
-        setError("Terjadi kesalahan pada server.")
+        return
       }
+
+      if (response.status === 401) {
+        setError("Sesi kamu habis. Silakan masuk kembali.")
+        return
+      }
+
+      if (response.status === 429) {
+        setError("Terlalu banyak permintaan. Coba lagi beberapa saat lagi.")
+        return
+      }
+
+      if (response.status === 400) {
+        const data = (response.data ?? {}) as Record<string, unknown>
+
+        setError(
+          firstErrorMessage(data, [
+            "title",
+            "description",
+            "facility",
+            "image",
+            "status",
+            "priority",
+            "non_field_errors",
+            "detail",
+          ]) ?? "Data tidak valid.",
+        )
+
+        return
+      }
+
+      setError("Terjadi kesalahan pada server.")
     } finally {
       setLoading(false)
     }
@@ -278,6 +330,7 @@ function CreateComplaint() {
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Contoh: AC Ruang 301 Rusak"
               className="input-base"
+              maxLength={MAX_TITLE_LENGTH}
               required
             />
           </div>
