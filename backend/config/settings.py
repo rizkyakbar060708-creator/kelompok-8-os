@@ -42,6 +42,12 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
 
+    # Wajib terdaftar agar BLACKLIST_AFTER_ROTATION benar-benar jalan.
+    # Tanpa app ini refresh.blacklist() tidak punya metode dan SimpleJWT
+    # melewati pencabutan secara diam-diam (except AttributeError), sehingga
+    # refresh token lama tetap sah setelah logout.
+    "rest_framework_simplejwt.token_blacklist",
+
     "apps.accounts",
     "apps.facilities",
     "apps.complaints",
@@ -54,6 +60,19 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    # Batas dasar untuk seluruh API. Endpoint yang paling butuh ini adalah
+    # /auth/login/ dan /auth/register/ yang terbuka untuk publik, jadi bisa
+    # dipakai brute force atau membuat akun massal.
+    # Catatan: state throttle disimpan di memori per proses, jadi angkanya cuma
+    # berlaku untuk satu worker. Produksi multi-worker butuh cache bersama.
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "300/min",
+    },
 }
 
 SIMPLE_JWT = {
@@ -145,6 +164,22 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+
+# Uploaded files (Complaint.image). Disajikan lewat static() di config/urls.py
+# dan hanya saat DEBUG, jadi di produksi harus ditangani web server.
+MEDIA_URL = '/media/'
+
+MEDIA_ROOT = BASE_DIR / 'media'
+
+
+# Naikkan dari default 2.5 MB supaya file foto sebesar 5-6 MB tetap sampai
+# ke validate_image dan ditolak di sana dengan pesan yang menyebut batasnya.
+# File di atas 6 MB akan lebih dulu ditolak Django dengan RequestDataTooBig
+# (masih 400, tapi pesannya kurang informatif). Batas 5 MB ditegakkan di
+# serializer, angka di sini hanya penampol agar pesan error yang jelas tidak
+# hilang di tengah.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 
 
 # Email

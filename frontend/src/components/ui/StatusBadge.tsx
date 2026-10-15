@@ -1,23 +1,32 @@
+type Status =
+  | "PENDING"
+  | "IN_PROGRESS"
+  | "RESOLVED"
+  | "REJECTED"
+
 interface StatusBadgeProps {
-  status: "submitted" | "verified" | "in_progress" | "resolved"
+  status: Status
 }
 
-const statusConfig = {
-  submitted: {
-    label: "Diajukan",
-    className: "bg-gray-100 text-gray-700",
+const statusConfig: Record<
+  Status,
+  { label: string; className: string }
+> = {
+  PENDING: {
+    label: "Menunggu",
+    className: "bg-amber-100 text-amber-700",
   },
-  verified: {
-    label: "Diverifikasi",
+  IN_PROGRESS: {
+    label: "Diproses",
     className: "bg-blue-100 text-blue-700",
   },
-  in_progress: {
-    label: "Diproses",
-    className: "bg-yellow-100 text-yellow-700",
-  },
-  resolved: {
+  RESOLVED: {
     label: "Selesai",
-    className: "bg-green-100 text-green-700",
+    className: "bg-emerald-100 text-emerald-700",
+  },
+  REJECTED: {
+    label: "Ditolak",
+    className: "bg-red-100 text-red-700",
   },
 }
 
@@ -26,7 +35,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
 
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${config.className}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ${config.className}`}
     >
       {config.label}
     </span>
