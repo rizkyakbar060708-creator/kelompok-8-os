@@ -264,14 +264,13 @@ Nilai `role` yang valid: `STUDENT`, `STAFF`, `ADMIN`.
 | `description` | text | wajib |
 | `status` | varchar(20) | `PENDING` \| `IN_PROGRESS` \| `RESOLVED` \| `REJECTED`, default `PENDING` |
 | `priority` | varchar(10) | `LOW` \| `MEDIUM` \| `HIGH`, default `MEDIUM` |
-| `image` | ImageField | ada di model, **tidak dipakai API** (lihat §13) |
+| `image` | ImageField | opsional, maks 5 MB, hanya PNG/JPEG (lihat §8) |
 | `created_at` | datetime | auto |
 | `updated_at` | datetime | auto |
 
-> **Catatan:** field `image` ada di model, tetapi **tidak** terdaftar di
-> `ComplaintSerializer.Meta.fields`, sehingga **tidak dapat dikirim maupun diterima melalui
-> API**. Sudah diverifikasi: mengirim `image` tidak menghasilkan error, field tersebut
-> diabaikan diam-diam.
+> **Catatan:** field `image` **sudah** terdaftar di `ComplaintSerializer.Meta.fields`.
+> Upload dikirim sebagai `multipart/form-data`; `reporter` read-only dan selalu diambil
+> dari access token. Lihat [§8](#8-field-image-sudah-dipakai).
 
 ---
 
@@ -312,38 +311,39 @@ Konsekuensi penting:
 | --- | --- |
 | Masa berlaku | **7 hari** (`REFRESH_TOKEN_LIFETIME`) |
 | Rotasi | **aktif** (`ROTATE_REFRESH_TOKENS = True`) |
-| Blacklist | disetel `True`, **tidak berfungsi** (lihat catatan) |
+| Blacklist | disetel `True` dan **berfungsi** (lihat catatan) |
 
 Saat refresh dipanggil, server mengembalikan **access token baru sekaligus refresh token
-baru**. Refresh token **lama masih bisa dipakai lagi** — karena app
-`rest_framework_simplejwt.token_blacklist` **tidak terdaftar** di `INSTALLED_APPS`, sehingga
-mekanisme blacklist dilewati. Sudah diverifikasi: memakai kembali refresh token lama tetap
-menghasilkan `200`.
+baru**, dan refresh token **lama langsung masuk blacklist**. App
+`rest_framework_simplejwt.token_blacklist` terdaftar di `INSTALLED_APPS`, dan migrasinya
+ikut membawa dirinya sendiri sehingga tidak menambah file migrasi di repo.
+Sudah diverifikasi: memakai kembali refresh token lama menghasilkan `401`.
 
-> Konsekuensi untuk client: logout harus menghapus token secara lokal, karena server belum
-> bisa mencabut refresh token.
+> Client wajib menyimpan `refresh` hasil rotasi, dan saat logout memanggil
+> `POST /api/auth/blacklist/` supaya token dicabut di server.
 
 ### Role dan permission
 
 `accounts.User` punya field `role` dengan tiga nilai: `STUDENT`, `STAFF`, `ADMIN`.
 
-Namun **belum ada permission berbasis role yang diimplementasikan**:
+Permission ada di `apps/accounts/permissions.py` dan memakai field `role` aplikasi,
+bukan flag `is_staff` bawaan Django:
 
-- Tidak ada `permissions.py` di project mana pun.
-- Tidak ada view yang memakai permission seperti `IsAdminUser` atau custom permission.
-- **Role tidak membatasi endpoint apa pun.** User dengan role `STUDENT` tetap bisa membuat
-  dan menghapus facility maupun complaint. Sudah diverifikasi.
+- `IsAdminOrReadOnly` — read bebas, tulis khusus admin. Dipakai di endpoint fasilitas.
+- `IsOwnerOrAdmin` — objek milik sendiri, admin bebas. Dipakai di endpoint pengaduan.
+- **Role membatasi endpoint pengaduan dan fasilitas.** User biasa hanya melihat dan
+  mengubah pengaduannya sendiri; `status` dan `priority` hanya bisa diubah admin.
+  Fasilitas hanya bisa ditulis admin. Sudah diverifikasi lewat test.
 - Role **tidak bisa dipilih saat register** — `RegisterSerializer.create()` selalu memaksa
   `role=STUDENT`. Mengirim `role: "ADMIN"` di body register tetap menghasilkan user
   `STUDENT`.
-
-Role saat ini berfungsi sebagai **label data**, bukan kontrol akses.
 
 | Endpoint | Akses |
 | --- | --- |
 | `POST /api/auth/register/` | Public (`AllowAny`) |
 | `POST /api/auth/login/` | Public |
 | `POST /api/auth/refresh/` | Public |
+| `POST /api/auth/blacklist/` | Wajib terautentikasi |
 | `GET /api/auth/me/` | Semua user terautentikasi |
 | `/api/facilities/*` | Semua user terautentikasi (tanpa pembatasan role) |
 | `/api/complaints/*` | Semua user terautentikasi (tanpa pembatasan role) |
@@ -522,8 +522,8 @@ Karena `ROTATE_REFRESH_TOKENS = True`, **kedua** token dikembalikan:
 
 Client **wajib menyimpan ulang** `refresh` yang baru.
 
-> Refresh token lama **tidak** dicabut dan masih bisa dipakai lagi, karena app
-> `token_blacklist` tidak terpasang. Sudah diverifikasi.
+> Refresh token lama **sudah** dicabut karena `token_blacklist` terpasang, jadi memakai
+> lagi menghasilkan `401`. Sudah diverifikasi lewat test.
 
 #### Response `401 Unauthorized`
 
@@ -792,8 +792,8 @@ Membuat pengaduan baru.
 > meng-override `perform_create`, jadi client wajib mengirim `reporter` sendiri. Jika tidak
 > dikirim, server membalas `400`.
 
-> Field `image` **tidak bisa digunakan** meski ada di model — lihat
-> [§13](#13-endpoint-yang-belum-tersedia).
+> Field `image` bisa digunakan sebagai `multipart/form-data` — lihat
+> [§8](#8-field-image-sudah-dipakai).
 
 #### Contoh request
 
@@ -1066,17 +1066,30 @@ Backend memakai: `PENDING`, `IN_PROGRESS`, `RESOLVED`, `REJECTED`.
 **Frontend sekarang sudah cocok.** `StatusBadge.tsx` memakai empat nilai uppercase yang
 sama, dan dashboard admin menghitung agregat langsung dari nilai tersebut.
 
-### 8. Field `image` belum bisa dipakai
+### 8. Field `image` sudah dipakai
 
-`CreateComplaint.tsx` punya UI upload foto, tetapi **backend belum menerima field
-`image`** karena tidak terdaftar di serializer. Upload tidak akan tersimpan dan tidak akan
-muncul di response.
+Field `image` terdaftar di serializer dan bisa diunggah lewat `POST /api/complaints/`
+dengan `multipart/form-data`. Validasi berlapis: DRF `ImageField` memverifikasi file
+benar-benar gambar lewat Pillow, lalu `validate_image()` menegakkan batas 5 MB dan
+hanya menerima PNG atau JPEG. Nilai `content_type` yang dipakai allowlist berasal dari
+hasil decode Pillow (`django/forms/fields.py:754`), bukan dari header MIME client, jadi
+tidak bisa dipalsukan.
 
-### 9. Complaint tidak terfilter per user
+Batas 5 MB ditegakkan di serializer, sedangkan `DATA_UPLOAD_MAX_MEMORY_SIZE` (6 MB)
+hanya penampol supaya pesan error yang jelas tidak hilang. File di atas 6 MB ditolak
+Django dengan `RequestDataTooBig` (tetap 400, pesannya kurang informatif).
 
-`GET /api/complaints/` mengembalikan **semua** pengaduan, bukan hanya milik user yang login.
-Karena itu, halaman daftar pengaduan di frontend tidak bisa mengandalkan endpoint ini untuk
-menampilkan "pengaduan saya" tanpa filter tambahan di sisi client.
+Field dikembalikan sebagai path relatif `/media/...` tanpa host. Frontend harus
+meneruskannya ke URL absolut lewat `resolveMediaUrl()` di `frontend/src/utils/media.ts`,
+dan `config/urls.py` hanya menyajikan media saat `DEBUG=True`.
+
+### 9. Complaint terfilter per user
+
+`GET /api/complaints/` memakai `ScopedComplaintMixin.get_queryset()` sehingga user biasa
+hanya menerima pengaduannya sendiri, sedangkan admin melihat seluruh pengaduan.
+Pengaduan milik user lain balas **404**, bukan 403, jadi id milik orang lain tidak
+bisa diprobe. `status` dan `priority` hanya bisa diubah admin lewat validasi di
+`ComplaintSerializer.validate()`.
 
 ### 10. Tidak ada paginasi
 
@@ -1110,14 +1123,14 @@ Bagian ini sengaja dicantumkan agar tidak disalahartikan sebagai endpoint yang a
 
 | Endpoint / Fitur | Status | Catatan |
 | --- | --- | --- |
-| Upload gambar pada complaint | **Belum tersedia** | Field `image` ada di model tapi tidak ada di serializer |
-| `GET /api/auth/logout/` | **Belum tersedia** | Tidak ada view logout; token tidak bisa dicabut dari server |
-| Blacklist / revoke token | **Belum tersedia** | App `token_blacklist` tidak terpasang |
+| Upload gambar pada complaint | **Tersedia** | Field `image` ada di serializer; `multipart/form-data`, maks 5 MB, PNG/JPEG. Lihat §8 |
+| `GET /api/auth/logout/` | **Belum tersedia** | Tidak ada endpoint logout; pencabutan dilakukan lewat `POST /api/auth/blacklist/` |
+| Blacklist / revoke token | **Tersedia** | `POST /api/auth/blacklist/`, wajib autentikasi. Lihat §13.2 |
 | `GET /api/auth/users/` | **Belum tersedia** | Tidak ada endpoint untuk daftar user |
 | Ganti password | **Belum tersedia** | Tidak ada view untuk mengubah password |
 | Filter / search / sort pada list | **Belum tersedia** | Tidak ada query parameter di endpoint list |
 | Paginasi | **Belum tersedia** | `ListCreateAPIView` tanpa pagination class |
-| Endpoint khusus admin/staff | **Belum tersedia** | Tidak ada permission berbasis role; semua user akses sama |
+| Endpoint khusus admin/staff | **Sebagian** | Fasilitas hanya bisa ditulis admin; pengaduan milik user, `status`/`priority` khusus admin. Belum ada endpoint agregasi khusus admin |
 | Dashboard / statistik | **Belum tersedia** | Tidak ada endpoint agregasi. Dashboard admin di frontend menghitung sendiri dari `GET /complaints/` |
 | Verifikasi email / reset password | **Belum tersedia** | Tidak ada email verification |
 
@@ -1178,13 +1191,15 @@ dikonfirmasi:
 | Response register | `201` dengan `{"username": "..."}` |
 | Response login | `200` dengan `{refresh, access}` |
 | Rotasi refresh token | Mengembalikan `access` + `refresh` baru |
-| Reuse refresh token lama | Masih `200` (blacklist tidak aktif) |
+| Reuse refresh token lama | `401` (sudah masuk blacklist) |
+| `POST /api/auth/blacklist/` tanpa token | `401` |
 | `GET /api/auth/me/` tanpa token | `401` |
-| Complaint tanpa `reporter` | `400 {"reporter": [...]}` |
-| Field `image` | Diabaikan (tidak ada di serializer) |
+| Complaint tanpa `facility` | `400 {"facility": [...]}` |
+| Kirim `reporter` saat create | Diabaikan; pelapor selalu dari access token |
+| Field `image` | Diterima, maks 5 MB, PNG/JPEG |
 | Register dengan `role=ADMIN` | Tetap `STUDENT` |
-| Password pendek `"123"` | Diterima (`201`) |
-| `permissions.py` | Tidak ada di project |
+| Password pendek `"123"` | `400 {"password": [...]}` |
+| `permissions.py` | Ada di `apps/accounts/permissions.py` |
 | Environment variables | Tidak ada |
 | `makemigrations --check` | `No changes detected` |
 

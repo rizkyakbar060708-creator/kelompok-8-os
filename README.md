@@ -459,21 +459,27 @@ Detail: [`backend/README.md` §14](backend/README.md).
 
 Seluruh endpoint (kecuali register/login/refresh) bisa diakses user terautentikasi apa
 pun. User dengan role `STUDENT` dapat membuat dan menghapus facility maupun complaint.
-Role hanya membatasi **tampilan** di frontend.
+Role membatasi akses pengaduan dan fasilitas di backend. User biasa hanya melihat
+pengaduannya sendiri, dan `status`/`priority` hanya bisa diubah admin.
 
 Detail: [`backend/README.md` §8](backend/README.md).
 
-### 13.5 Upload foto belum didukung backend
+### 13.5 Upload foto sekarang didukung
 
-Field `image` ada di model `Complaint` tetapi **tidak** terdaftar di serializer,
-sehingga tidak dapat dikirim melalui API. UI unggah foto di `CreateComplaint.tsx`
-belum terhubung.
+Field `image` terdaftar di serializer dan diterima sebagai `multipart/form-data`.
+Validasi berlapis: Pillow memverifikasi file benar-benar gambar, lalu batas 5 MB dan
+hanya PNG/JPEG ditegakkan di `validate_image()`. Nilai `content_type` untuk allowlist
+berasal dari hasil decode Pillow, bukan dari header MIME client.
+Field dikembalikan sebagai path relatif `/media/...`; frontend memakai
+`resolveMediaUrl()` untuk mengubahnya menjadi URL absolut.
 
-### 13.6 Refresh token lama masih dapat dipakai
+### 13.6 Refresh token lama dicabut setelah rotasi
 
-App `rest_framework_simplejwt.token_blacklist` tidak terpasang, sehingga
-`BLACKLIST_AFTER_ROTATION` tidak berefek. Logout harus dilakukan sepenuhnya di sisi
-frontend (hapus token dari `localStorage`).
+App `rest_framework_simplejwt.token_blacklist` sudah terpasang, jadi setiap refresh
+mencabut refresh token lama. Client wajib menyimpan `refresh` hasil rotasi dan
+memanggil `POST /api/auth/blacklist/` saat logout. Endpoint blacklist wajib
+autentikasi; `TokenBlacklistView` bawaan SimpleJWT tidak mewajibkan autentikasi dan
+tidak boleh dipakai apa adanya.
 
 ### 13.7 Route `/complaints/:id` belum terdaftar
 

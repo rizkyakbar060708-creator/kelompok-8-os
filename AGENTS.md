@@ -66,8 +66,14 @@ membatalkan **seluruh** token JWT yang sedang berlaku.
 
 - Frontend: `npm run lint` lalu `npm run build` (`build` menjalankan `tsc -b` + vite build,
   jadi type-check sudah termasuk). Tidak ada runner test di frontend.
-- Backend: `python manage.py check`. `python manage.py test` **hijau tanpa arti** —
-  semua `apps/*/tests.py` cuma stub `TestCase` tanpa test method (0 test).
+- Backend: `python manage.py check`, lalu `python manage.py test` — suite di
+  `apps/accounts/tests.py` dan `apps/complaints/tests.py` sudah punya test method
+  yangsungguhan (otorisasi, blacklist token, upload gambar). Jalankan dari
+  `backend/` dengan venv lokal: `.\.venv\Scripts\python.exe manage.py test`.
+  Lambatnya (~2 menit) berasal dari pembuatan PNG besar untuk tes batas ukuran.
+- `python manage.py makemigrations --check --dry-run` harus keluar `No changes detected`.
+  App `token_blacklist` membawa migrasinya sendiri di dalam paket, jadi memasang
+  blacklist **tidak** menambah file migrasi di repo ini.
 - Tidak ada CI, pre-commit, atau formatter. Hanya ESLint flat config
   (`frontend/eslint.config.js`); tidak ada Prettier.
 
@@ -80,30 +86,58 @@ membatalkan **seluruh** token JWT yang sedang berlaku.
 - **Semua URL backend wajib trailing slash** — tanpa itu Django balas 301.
 - **CORS hanya mengizinkan `http://localhost:5173`** (`settings.py`). Buka frontend lewat
   `localhost`, bukan `127.0.0.1`, atau seluruh request API diblokir.
-- JWT: access 30 menit, refresh 7 hari, rotasi aktif. App `token_blacklist` **tidak**
-  terpasang, jadi refresh token lama masih valid dan logout hanya menghapus
-  `localStorage`. Interceptor di `api.ts` hanya menyimpan access token baru —
-  refresh token hasil rotasi dibuang; aman hanya selama blacklist belum aktif.
+- JWT: access 30 menit, refresh 7 hari, rotasi **dan** blacklist aktif
+  (`token_blacklist` sudah terpasang). Setiap refresh mengembalikan refresh token
+  baru dan **token lama langsung dibatalkan**, jadi frontend wajib menyimpan
+  `refresh` hasil rotasi (`services/api.ts`) — kalau dibuang, sesi user berikutnya
+  langsung 401. Logout memanggil `POST /api/auth/blacklist/` dan selalu membersihkan
+  `localStorage`, jadi kegagalan request tidak membuat user terjebak login.
+  Endpoint blacklist **wajib** memakai `BlacklistView` di `apps/accounts/views.py`,
+  bukan `TokenBlacklistView` bawaan: yang bawaan mewarisi `TokenViewBase` dengan
+  `permission_classes = ()` sehingga siapa pun bisa mencabut token milik orang lain.
 - Upload complaint pakai `FormData` dan **Content-Type sengaja tidak diset**; memaksa
   `application/json` merusak boundary multipart.
-- `image` dikembalikan sebagai path absolut `/media/...`, dan `config/urls.py` hanya
+- `image` dikembalikan sebagai path `/media/...` **tanpa host**. Pakai
+  `resolveMediaUrl()` dari `utils/media.ts` sebelum memakainya sebagai `src`;
+  path mentah akan dicari di origin frontend dan 404. `config/urls.py` hanya
   menyajikan media saat `DEBUG=True`.
 
 ## Gotcha auth & otorisasi
 
-- **Role hanya membatasi tampilan di frontend.** Backend tidak punya `permissions.py`,
-  `get_queryset()` scoping, atau ownership check. `GET /api/complaints/` mengembalikan
-  seluruh pengaduan ke siapa pun yang terautentikasi, dan `ComplaintDetailView` memakai
-  `Complaint.objects.all()`, jadi user A bisa edit/hapus pengaduan user B. Filter
-  `reporter === user.id` di dashboard murni kosmetik (lihat TODO di
-  `services/complaintService.ts`).
-- `reporter` sudah read-only di serializer dan diisi dari access token
-  (`perform_create`), jadi jangan kirim field itu saat membuat pengaduan.
-- Register selalu memaksa `role=STUDENT` dan **tidak** menjalankan
-  `validate_password()` — password lemah diterima.
+- **Ownership pengaduan ditegakkan di backend.** `ScopedComplaintMixin.get_queryset()`
+  memfilter `reporter=request.user`; admin (`role=ADMIN`) tetap melihat semua.
+  Karena filtering terjadi di queryset, pengaduan milik orang lain balas **404**,
+  bukan 403, sehingga id milik orang lain tidak bisa diprobe. Endpoint list ikut
+  terlindungi, sedangkan `IsOwnerOrAdmin` hanya lapisan kedua yang menutup celah kalau
+  suatu saat ada view yang lupa melakukan scoping.
+- **Status dan priority hanya boleh diubah admin.** `ComplaintSerializer.validate()`
+  menolak dua field itu untuk selain admin, termasuk saat create. Tanpa ini
+  pemilik bisa menandai pengaduannya sendiri sebagai `RESOLVED`.
+- Fasilitas memakai `IsAdminOrReadOnly` (read bebas, tulis khusus admin).
+- `reporter` read-only di serializer dan diisi dari access token (`perform_create`),
+  jadi jangan kirim field itu saat membuat pengaduan.
+- Register memaksa `role=STUDENT` (field `role` tidak ada di `RegisterSerializer`,
+  jadi client tidak bisa mendaftar sebagai ADMIN) **dan** menjalankan
+  `validate_password()` lewat `django.contrib.auth.password_validation`.
+- Rate limit global aktif di `settings.py` (`AnonRateThrottle` 60/menit,
+  `UserRateThrottle` 300/menit). State-nya in-memory per proses, jadi di produksi
+  multi-worker angka ini tidak berlaku konsisten tanpa cache bersama.
 - Fallback `ProtectedRoute` harus `/forbidden`, bukan kembali ke route yang sedang
   dijaga; kalau tidak, guard dievaluasi ulang dan terjadi infinite redirect loop.
   Jangan diubah tanpa paham alasannya.
+
+## TODO yang sengaja ditunda
+
+Belum dikerjakan, sengaja dikecualikan dari perbaikan sekarang:
+
+- Pagination untuk `GET /api/complaints/` (endpoint masih mengembalikan seluruh
+  baris) dan endpoint agregasi statistik untuk dashboard admin.
+- Nested facility di serializer supaya frontend tidak perlu join PK ke daftar
+  fasilitas di client.
+- Cache daftar fasilitas antar halaman (sekarang di-fetch ulang tiap navigasi).
+- Index database untuk `Complaint.created_at` dan `Complaint.status`, plus
+  `select_related("facility")` di queryset.
+- Thumbnail untuk foto pengaduan (sekarang file asli dilayani apa adanya).
 
 ## Database & media
 
@@ -115,11 +149,10 @@ membatalkan **seluruh** token JWT yang sedang berlaku.
 
 ## Sumber kebenaran & konvensi
 
-- **Kode mengalahkan README.** Perubahan terakhir (belum di-commit) membuat beberapa
-  klaim README salah: field `image` kini ada di serializer dan bisa diunggah,
-  `reporter` sudah read-only dari token, route `/complaints/:id` sudah terdaftar,
-  dan halaman Pengaduan/Buat Pengaduan sudah terhubung API. Baca kode sebelum
-  percaya §13 Known Issues.
+- **Kode mengalahkan README.** Klaim §13 Known Issues di README sudah usang:
+  field `image` kini ada di serializer dan bisa diunggah, `reporter` sudah
+  read-only dari token, ownership pengaduan ditegakkan di backend, dan
+  `token_blacklist` sudah aktif. Baca kode sebelum percaya §13.
 - Commit: Conventional Commits (`feat:`, `chore:`, `feat(frontend):`).
 - Docs, komentar kode, dan teks UI berbahasa Indonesia. Komentar menjelaskan *kenapa*
   sebuah keputusan diambil (mis. batas `DATA_UPLOAD_MAX_MEMORY_SIZE` di

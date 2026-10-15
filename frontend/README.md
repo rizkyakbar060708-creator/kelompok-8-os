@@ -344,10 +344,12 @@ login" — tanpa itu guard akan menampilkan spinner tanpa henti.
 
 ### Logout
 
-`AuthContext.logout()` menghapus `ACCESS` dan `REFRESH` dari `localStorage`, lalu
-`navigate("/login")`.
+`AuthContext.logout()` mencoba `POST /api/auth/blacklist/` dengan refresh token yang
+dimiliki, lalu selalu menghapus `ACCESS` dan `REFRESH` dari `localStorage`, termasuk
+saat request blacklist gagal, dan baru `navigate("/login")`.
 
-> Backend **belum** punya endpoint logout, sehingga pencabutan token hanya di sisi client.
+> Backend menyediakan `POST /api/auth/blacklist/`. Upaya pencabutan bersifat
+> best-effort: Kegagalan request tidak boleh menyisakan user di halaman terlindungi.
 
 ### Route guard
 
@@ -847,11 +849,14 @@ didefinisikan, sehingga tautan itu berakhir di 404.
 
 **Perbaikan:** daftarkan route-nya di `AppRoutes.tsx` atau ubah tautan.
 
-### 17.3 Upload foto belum terhubung
+### 17.3 Upload foto sudah terhubung
 
-Field `image` ada di model backend tetapi tidak ada di serializer. UI unggah di
-`CreateComplaint.tsx` hanya menyimpan `File` di state lokal, dan `handleSubmit` baru
-menjalankan `console.log`.
+UI unggah di `CreateComplaint.tsx` mengirim `FormData` ke `POST /api/complaints/`
+tanpa mengeset `Content-Type`, supaya axios menulis boundary multipart sendiri.
+`reporter` sengaja tidak ikut karena backend mengambilnya dari access token.
+Foto hasil upload dibaca lewat `resolveMediaUrl()` dari `utils/media.ts`, karena
+nilai `image` dari backend berupa path relatif `/media/...` yang akan 404 kalau
+dipakai langsung di origin frontend.
 
 ### 17.4 Halaman Pengaduan dan Buat Pengaduan belum integrasi
 
