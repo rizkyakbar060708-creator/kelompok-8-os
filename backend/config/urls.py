@@ -22,6 +22,13 @@ urlpatterns = [
         name="token_refresh",
     ),
 
+    # api/auth/blacklist/ sengaja TIDAK didaftarkan di sini. Endpoint itu ada
+    # di apps.accounts.urls sebagai BlacklistView yang mewajibkan autentikasi.
+    # TokenBlacklistView bawaan SimpleJWT tidak mewajibkan apa pun
+    # (TokenViewBase menetapkan permission_classes = ()), dan urlpatterns
+    # diselesaikan berurutan, jadi pendaftaran di sini akan membayangi versi
+    # yang aman.
+
     path("api/auth/", include("apps.accounts.urls")),
 
     path("api/facilities/", include("apps.facilities.urls")),
