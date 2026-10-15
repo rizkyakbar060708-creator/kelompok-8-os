@@ -1,8 +1,10 @@
-
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
-from accounts.permissions import IsAdminOrReadOnly
+# Prefix wajib `apps.` karena app didaftarkan sebagai "apps.accounts" di
+# INSTALLED_APPS. Import polos `accounts` tidak bisa di-resolve dan membuat
+# seluruh urlconf gagal dimuat.
+from apps.accounts.permissions import IsAdminOrReadOnly
 from .models import Facility
 from .serializers import FacilitySerializer
 

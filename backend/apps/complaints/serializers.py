@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.accounts.permissions import is_admin
 from .models import Complaint
 
 
@@ -66,11 +67,13 @@ class ComplaintSerializer(serializers.ModelSerializer):
         if image is None:
             return image
 
-        # DATA_UPLOAD_MAX_MEMORY_SIZE (6 MB di settings) sengaja dibuat sedikit
-        # lebih besar dari batas di sini, supaya request yang terlalu besar
-        # tetap sampai ke validate_image dan mendapat pesan yang jelas, bukan
-        # RequestDataTooBig yang errornya tidak menjelaskan batas file foto.
-        # Batas sesungguhnya ditegakkan di method ini, bukan di settings.
+        # content_type di sini BUKAN header yang dikirim client. Field ImageField
+        # milik DRF meneruskan ke django.forms.ImageField, yang menimpanya dengan
+        # Image.MIME.get(image.format) hasil decode Pillow
+        # (django/forms/fields.py:754). Jadi allowlist di bawah menilai format
+        # isi file yang benar-benar sudah dibaca Pillow, bukan nama ekstensi
+        # atau klaim MIME dari client. File yang bukan gambar ditolak lebih
+        # dulu di to_internal_value dengan pesan "Upload a valid image".
         if image.size > MAX_IMAGE_SIZE_BYTES:
             raise serializers.ValidationError(
                 f"Ukuran foto maksimal {MAX_IMAGE_SIZE_MB} MB. "
@@ -84,3 +87,41 @@ class ComplaintSerializer(serializers.ModelSerializer):
             )
 
         return image
+
+    # Dipetakan ke label Bahasa Indonesia supaya pesan error memakai istilah
+    # yang sama dengan halaman lain.
+    ADMIN_ONLY_FIELDS = {
+        "status": "status",
+        "priority": "prioritas",
+    }
+
+    def validate(self, attrs):
+        """Tolak perubahan status dan priority dari selain admin.
+
+        Dua field itu menentukan bagaimana pengaduan ditangani, jadi keduanya
+        kewenangan admin. Tanpa guard ini pemilik bisa menandai pengaduannya
+        sendiri sebagai RESOLVED tanpa pernah ditinjau siapa pun. Ownership di
+        view hanya membatasi siapa yang boleh menyentuh objek, bukan field apa
+        yang boleh diubah.
+        """
+        request = self.context.get("request")
+
+        if request is not None and not is_admin(request.user):
+            for field, label in self.ADMIN_ONLY_FIELDS.items():
+                if field not in attrs:
+                    continue
+
+                current = getattr(self.instance, field, None)
+
+                # Mengirim nilai yang sama dengan yang sudah tersimpan bukan
+                # perubahan, jadi PATCH yang tidak menyentuh field ini tidak
+                # ikut ditolak.
+                if current != attrs[field]:
+                    raise serializers.ValidationError({
+                        field: [
+                            f"Hanya admin yang dapat mengubah {label} "
+                            f"pengaduan."
+                        ]
+                    })
+
+        return attrs
