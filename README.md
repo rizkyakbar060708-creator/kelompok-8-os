@@ -61,11 +61,11 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 - Memberikan data fasilitas yang terstruktur sebagai dasar pengaduan.
 - Menjaga pemisahan hak akses antara berbagai role pengguna.
 
-> **Catatan:** pembatasan hak akses berbasis role **baru ada di sisi frontend** (route
-> `/admin` dan disembunyikan di navigasi). Di sisi backend, `role` masih disimpan sebagai
-> data dan **belum membatasi akses endpoint** mana pun — filter "pengaduan saya" di
-> dashboard user dijalankan di browser, bukan di server. Lihat
-> [§13](#13-known-issues).
+> **Catatan:** pembatasan hak akses berbasis role ditegakkan **di backend**, bukan hanya
+> di frontend. Queryset pengaduan di-scope per pengguna, ownership diperiksa di view,
+> dan perubahan `status`/`priority` divalidasi di serializer. Frontend hanya
+> menyembunyikan menu dan tombol yang memang tidak bisa dipakai role tersebut.
+> Lihat [§6.1](#61-hak-akses-berdasarkan-role).
 
 ---
 
@@ -76,9 +76,12 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 - Registrasi akun baru (role dipaksa `STUDENT`).
 - Login menggunakan JWT, menghasilkan **access token** dan **refresh token**.
 - Refresh access token dengan rotasi refresh token.
+- Pencabutan refresh token saat logout (`POST /api/auth/blacklist/`).
 - Mengambil data user yang sedang login (`/api/auth/me/`).
 - CRUD lengkap untuk **fasilitas**: list, create, retrieve, update, delete.
 - CRUD lengkap untuk **pengaduan**: list, create, retrieve, update, delete.
+- Otorisasi berbasis role pada pengaduan dan fasilitas, ditegakkan di queryset,
+  view, dan serializer.
 - Django admin (`/admin/`) untuk mengelola data secara manual.
 
 ### Yang sudah tersedia di frontend
@@ -92,14 +95,18 @@ refleksi, dan efek refractif) di atas latar navy gelap.
   lainnya menerima halaman **403 Forbidden**.
 - **Auto-refresh token** di axios interceptor — sesi tidak lagi terputus setelah 30 menit.
 - Halaman **Pengaduan** dengan pencarian dan filter status (berbasis data lokal).
-- Halaman **Buat Pengaduan** dengan form dan area unggah foto.
+- Halaman **Buat Pengaduan** dengan form dan area unggah foto, tersambung ke API.
+- Halaman **Detail Pengaduan** dengan panel **Tindak lanjut** (ubah status dan prioritas)
+  khusus staf dan admin, nama pelapor khusus admin, serta tombol hapus sesuai hak role.
 - Halaman **Profil** yang menampilkan data user dari AuthContext.
 - Halaman **403 Forbidden** dan **404 Not Found**.
 - Design system liquid glass (`glass-panel`, `glass-card`, `glass-chip`, `brand-mark`).
 
-> **Penting:** halaman **Pengaduan** dan **Buat Pengaduan** masih memakai data lokal
-> dan belum mengirim ke backend. Yang sudah terhubung ke API: autentikasi, Dashboard
-> user, dan Dashboard admin. Lihat [§11 Status Integrasi](#11-status-integrasi).
+> **Penting:** daftar dan form pengaduan sudah tersambung ke API
+> (`GET`/`POST /api/complaints/`), termasuk detail dengan `PATCH` untuk tindak lanjut
+> dan `DELETE` untuk penghapusan sesuai hak role. Yang masih dihitung di browser:
+> pencarian dan filter status di halaman Pengaduan. Lihat
+> [§11 Status Integrasi](#11-status-integrasi).
 
 ---
 
@@ -222,12 +229,44 @@ Token disimpan di `localStorage` dengan key `ACCESS` dan `REFRESH`
 | Role | `/dashboard` | `/admin` |
 | --- | --- | --- |
 | `STUDENT` | Dashboard user | 403 Forbidden |
-| `STAFF` | Dashboard user | 403 Forbidden |
+| `STAFF` | redirect → `/complaints` | 403 Forbidden |
 | `ADMIN` | redirect → `/admin` | Dashboard admin |
+
+Staf diarahkan ke daftar pengaduan, bukan dashboard, karena yang perlu mereka
+kerjakan adalah laporan orang lain, sedangkan metrik dashboard user hanya
+menghitung pengaduan sendiri.
 
 Fallback saat role tidak cocok diarahkan ke `/forbidden`, **bukan** ke halaman yang
 sedang dibuka. Kalau fallback diarahkan balik ke route yang sama, guard akan
 dievaluasi ulang dengan hasil identik dan terjadi infinite redirect loop.
+
+### Hak akses berdasarkan role
+
+Otorisasi ditegakkan di backend. Pembanding role terpusat di
+`apps/accounts/permissions.py` (`is_admin()`, `is_manager()`) dan tidak pernah
+menulis `user.role == "..."` langsung di tempat lain.
+
+| Aksi | `STUDENT` | `STAFF` | `ADMIN` |
+| --- | --- | --- | --- |
+| Lihat daftar/detail pengaduan | miliknya saja | semua | semua |
+| Ubah `status` / `priority` | tidak | ya | ya |
+| Hapus pengaduan | miliknya, hanya saat `PENDING` | tidak | semua |
+| Lihat nama pelapor | tidak | tidak | ya |
+| Kelola fasilitas (tambah/edit/hapus) | tidak | tidak | ya |
+| Akses `/admin` | tidak | tidak | ya |
+
+Catatan penting:
+
+- Pengaduan milik orang lain membalas **404**, bukan 403, untuk mahasiswa, karena
+  queryset-nya sudah di-scope. Id milik orang lain tidak bisa diprobe.
+- `reporter_username` hanya diisi untuk admin. Untuk role lain field ini `null`,
+  jadi identitas pelapor tidak pernah sampai ke browser mereka.
+- Akun `createsuperuser` otomatis ber-role **ADMIN**, karena `UserManager.create_superuser()`
+  sudah mengisi `role=ADMIN` secara default.
+- **`role` adalah satu-satunya sumber kebenaran di API.** `is_superuser` hanya memberi
+  akses ke `/admin/` Django, bukan hak aplikasi. Akun superuser yang `role`-nya masih
+  `STUDENT` — misalnya yang dibuat sebelum `UserManager` diperbaiki — tetap behave
+  sebagai mahasiswa. Ubah kolom Role-nya lewat `/admin/` kalau memang mau jadi admin.
 
 ### Base URL
 
@@ -305,7 +344,7 @@ npm run preview   # Pratinjau hasil build
 npm run lint      # ESLint
 ```
 
-### 8.4 Membuat akun admin Django
+### 8.4 Membuat akun admin dan staf
 
 ```bash
 cd backend
@@ -313,6 +352,18 @@ python manage.py createsuperuser
 ```
 
 Diperlukan untuk mengakses dashboard admin di `http://127.0.0.1:8000/admin/`.
+Akun dari `createsuperuser` otomatis mendapat **Role = Admin**, jadi tidak perlu
+diubah manual lagi.
+
+Untuk akun **STAFF** atau **ADMIN** yang biasa (tanpa hak Django admin):
+
+1. Daftar seperti biasa lewat halaman `/register` — hasilnya selalu `STUDENT`.
+2. Masuk ke Django admin `http://127.0.0.1:8000/admin/` dengan akun superuser.
+3. Buka **Auth → Users**, pilih user yang mau diubah, lalu ubah kolom **Role** ke
+   `Staff` atau `Admin`, lalu simpan.
+
+Tidak ada endpoint API untuk mengubah role, jadi lewat Django admin satu-satunya
+jalurnya.
 
 ---
 
@@ -389,8 +440,11 @@ Integrasi frontend ↔ backend berjalan **bertahap**. Berikut kondisi nyata saat
 | Axios interceptor | **Ya** | `POST /api/auth/refresh/` saat 401 |
 | Dashboard (user) | **Ya** | `GET /api/complaints/` + `GET /api/facilities/` |
 | Dashboard Admin | **Ya** | `GET /api/complaints/` + `GET /api/facilities/` |
-| Pengaduan (list) | Tidak | Data contoh hardcoded |
-| Buat Pengaduan | Tidak | `console.log` pada submit |
+| Pengaduan (list) | **Ya** | `GET /api/complaints/` + `GET /api/facilities/` |
+| Detail Pengaduan | **Ya** | `GET /api/complaints/{id}/` |
+| Tindak lanjut | **Ya** | `PATCH /api/complaints/{id}/` (staf & admin) |
+| Hapus pengaduan | **Ya** | `DELETE /api/complaints/{id}/` |
+| Buat Pengaduan | **Ya** | `POST /api/complaints/` (`multipart/form-data`, opsional foto) |
 | Profil | **Ya** | Lewat AuthContext |
 
 ### Catatan tentang data dashboard
@@ -399,13 +453,12 @@ Kedua dashboard mengambil data dari endpoint yang sama dan berbeda hanya pada fi
 
 | Dashboard | Filter | Perbedaan |
 | --- | --- | --- |
-| Dashboard user | `reporter === user.id` | Hanya pengaduan sendiri, 3 kartu metrik |
-| Dashboard Admin | tanpa filter | Seluruh pengaduan, 4 kartu metrik (tambah "Ditolak") |
+| Dashboard user | otomatis oleh backend | Hanya pengaduan sendiri, 3 kartu metrik |
+| Dashboard Admin | otomatis oleh backend | Seluruh pengaduan, 4 kartu metrik (tambah "Ditolak") |
 
-> **Penting:** filter `reporter === user.id` dijalankan di **browser**, bukan di server.
-> `GET /api/complaints/` masih mengembalikan seluruh pengaduan ke setiap pengguna yang
-> terautentikasi, jadi ini **bukan batas keamanan** — data pengaduan orang lain tetap
-> terlihat di DevTools. Lihat [§13.2](#132-filter-pengaduan-hanya-di-client).
+> **Penting:** filter ini dijalankan di **server**, bukan di browser.
+> `GET /api/complaints/` hanya mengembalikan pengaduan milik pemanggil untuk role
+> `STUDENT` dan `STAFF`, dan seluruh pengaduan untuk `ADMIN`.
 
 Endpoint `facilities` dan `complaints` sudah dipakai oleh kedua dashboard. Yang masih
 **belum** dipakai: endpoint create/update/delete pengaduan.
@@ -438,29 +491,22 @@ Sekarang fallback mengarah ke `/forbidden`, dan `AppRoutes.tsx` memisahkan
 
 ### 13.2 Filter pengaduan hanya di client
 
-`GET /api/complaints/` mengembalikan **seluruh** pengaduan ke setiap pengguna yang
-terautentikasi. Dashboard user memfilter `reporter === user.id` di browser.
-
-**Dampak:** pengaduan milik orang lain tetap dikirim ke browser dan terlihat di
-DevTools. Filter ini hanya mengatur **tampilan**, bukan akses. Should backend
-memperbaiki, `get_queryset()` di `apps/complaints/views.py` perlu memfilter
-`reporter=request.user`.
+**Sudah diperbaiki.** `get_queryset()` di `apps/complaints/views.py` kini memfilter
+`reporter=request.user` untuk role yang bukan pengelola, jadi pengaduan milik orang
+lain tidak lagi dikirim ke browser. Lihat [§15](#15-yang-sudah-diperbaiki).
 
 ### 13.3 Ownership pengaduan tidak dijaga backend
 
-`ComplaintDetailView` memakai `Complaint.objects.all()` tanpa pengecekan kepemilikan,
-sehingga user A dapat melihat, mengubah (`PATCH`/`PUT`), dan menghapus (`DELETE`)
-pengaduan milik user B. Field `reporter` juga bisa diisi client, jadi pengaduan bisa
-dibuat atas nama user lain.
+**Sudah diperbaiki.** Scoping di queryset membuat pengaduan milik orang lain membalas
+404, dan field `reporter` sudah read-only serta diisi dari access token.
 
 Detail: [`backend/README.md` §14](backend/README.md).
 
 ### 13.4 Belum ada pembatasan akses berbasis role di backend
 
-Seluruh endpoint (kecuali register/login/refresh) bisa diakses user terautentikasi apa
-pun. User dengan role `STUDENT` dapat membuat dan menghapus facility maupun complaint.
-Role membatasi akses pengaduan dan fasilitas di backend. User biasa hanya melihat
-pengaduannya sendiri, dan `status`/`priority` hanya bisa diubah admin.
+**Sudah diperbaiki.** Role kini membatasi akses pengaduan (scoping queryset, object
+permission, dan guard serializer untuk `status`/`priority`) dan fasilitas
+(`IsAdminOrReadOnly`). Lihat [§6.1](#61-hak-akses-berdasarkan-role).
 
 Detail: [`backend/README.md` §8](backend/README.md).
 
@@ -483,10 +529,7 @@ tidak boleh dipakai apa adanya.
 
 ### 13.7 Route `/complaints/:id` belum terdaftar
 
-`ComplaintCard.tsx` menautkan ke `/complaints/{id}`, tetapi route tersebut belum
-didefinisikan di `AppRoutes.tsx`, sehingga membuka tautan itu berakhir di halaman 404.
-Saat ini halaman Dashboard dan Pengaduan masih menautkan ke `/complaints` agar tidak
-memicu ini.
+**Sudah diperbaiki.** Route `ComplaintDetail` sudah terdaftar di `AppRoutes.tsx`.
 
 ### 13.8 CORS hanya mengizinkan `localhost:5173`
 
@@ -522,11 +565,17 @@ Catatan perubahan agar tidak ada duplikasi dengan [§13](#13-known-issues).
 | 7 | Dashboard masih memakai data hardcoded (24 / 06 / 15) | Diambil dari `GET /api/complaints/`, agregat dihitung nyata |
 | 8 | Status frontend (`submitted`, `verified`) tidak cocok backend | `StatusBadge` sekarang memakai `PENDING` / `IN_PROGRESS` / `RESOLVED` / `REJECTED` |
 | 9 | `npm run lint` menghasilkan 4 error | Sekarang **0 error** (`any` diganti `unknown` + `axios.isAxiosError`) |
+| 10 | Pengaduan milik orang lain dikirim ke semua pengguna | `get_queryset()` di-scope per role; pengaduan orang lain membalas 404 |
+| 11 | `status`/`priority` hanya boleh diubah admin, padahal tugasnya milik pengelola | Guard serializer memakai `is_manager()` (STAFF/ADMIN) |
+| 12 | Hapus pengaduan bebas untuk semua user terautentikasi | `CanDeleteComplaint`: admin bebas, mahasiswa hanya miliknya yang masih `PENDING` |
+| 13 | Nama pelapor tidak pernah tampil padahal admin butuh tahu | Field read-only `reporter_username`, hanya terisi untuk admin |
+| 14 | Staf mendarat di dashboard yang metriknya selalu kosong | `DashboardRedirector` mengarahkan STAFF ke `/complaints` |
+| 15 | Superuser (`is_superuser=True`) ikut diperlakukan admin meski `role=STUDENT`, sehingga melihat semua pengaduan orang lain + nama pelapornya | `is_admin()`/`is_manager()` hanya membaca `role`; `UserManager.create_superuser()` mengisi `role=ADMIN` |
 
 ### Perubahan route
 
 | Route | Sebelum | Sesudah |
 | --- | --- | --- |
-| `/dashboard` | `ProtectedRoute allowedRoles={["ADMIN"]}` | `DashboardRedirector` → dashboard user, atau redirect `/admin` bila ADMIN |
+| `/dashboard` | `ProtectedRoute allowedRoles={["ADMIN"]}` | `DashboardRedirector` → dashboard user, redirect `/admin` bila ADMIN, redirect `/complaints` bila STAFF |
 | `/admin` | — | `ProtectedRoute allowedRoles={["ADMIN"]}` |
 | `/forbidden` | — | Halaman 403 |

@@ -73,7 +73,9 @@ membatalkan **seluruh** token JWT yang sedang berlaku.
   Lambatnya (~2 menit) berasal dari pembuatan PNG besar untuk tes batas ukuran.
 - `python manage.py makemigrations --check --dry-run` harus keluar `No changes detected`.
   App `token_blacklist` membawa migrasinya sendiri di dalam paket, jadi memasang
-  blacklist **tidak** menambah file migrasi di repo ini.
+  blacklist **tidak** menambah file migrasi di repo ini. `0002_alter_user_managers.py`
+  ada karena `UserManager` kustom di `accounts` mengubah state model — isinya
+  `managers=[]` jadi tidak mengubah apa pun saat runtime.
 - Tidak ada CI, pre-commit, atau formatter. Hanya ESLint flat config
   (`frontend/eslint.config.js`); tidak ada Prettier.
 
@@ -104,21 +106,57 @@ membatalkan **seluruh** token JWT yang sedang berlaku.
 
 ## Gotcha auth & otorisasi
 
+Tiga role: `STUDENT`, `STAFF`, `ADMIN`. Pembanding role terpusat di
+`apps/accounts/permissions.py` lewat `is_admin()` dan `is_manager()`; jangan
+menulis `user.role == "..."` langsung di tempat lain, karena frontend menentukan
+akses dari field yang sama dan konsistensi dua sisi akan cepat rusak.
+
+**Field `role` adalah satu-satunya sumber kebenaran.** `is_superuser` sengaja
+tidak ikut dihitung: flag itu hanya mengatur akses ke situs `/admin/` Django,
+bukan ke API. Kalau digabung, akun berlabel `STUDENT` yang dibuat lewat
+`createsuperuser` akan berperilaku seperti admin penuh — persis kekacauan yang
+pernah terjadi di repo ini. Supaya akun paradoxical itu tidak muncul,
+`UserManager.create_superuser()` di `apps/accounts/models.py` sudah mengisi
+`role=ADMIN` secara default (akun lama yang sudah terlanjur ada harus diubah
+manual lewat `/admin/`).
+
+| Aksi | STUDENT | STAFF | ADMIN |
+| --- | --- | --- | --- |
+| Lihat daftar/detail pengaduan | miliknya saja | semua | semua |
+| Ubah `status`/`priority` | tidak | ya | ya |
+| Hapus pengaduan | miliknya, hanya saat `PENDING` | tidak | semua |
+| Nama pelapor (`reporter_username`) | null | null | terisi |
+| Tulis fasilitas | tidak | tidak | ya |
+
 - **Ownership pengaduan ditegakkan di backend.** `ScopedComplaintMixin.get_queryset()`
-  memfilter `reporter=request.user`; admin (`role=ADMIN`) tetap melihat semua.
+  memfilter `reporter=request.user`; `is_manager()` (STAFF/ADMIN) tetap melihat semua.
   Karena filtering terjadi di queryset, pengaduan milik orang lain balas **404**,
   bukan 403, sehingga id milik orang lain tidak bisa diprobe. Endpoint list ikut
-  terlindungi, sedangkan `IsOwnerOrAdmin` hanya lapisan kedua yang menutup celah kalau
+  terlindungi, sedangkan `IsManagerOrOwner` hanya lapisan kedua yang menutup celah kalau
   suatu saat ada view yang lupa melakukan scoping.
-- **Status dan priority hanya boleh diubah admin.** `ComplaintSerializer.validate()`
-  menolak dua field itu untuk selain admin, termasuk saat create. Tanpa ini
-  pemilik bisa menandai pengaduannya sendiri sebagai `RESOLVED`.
-- Fasilitas memakai `IsAdminOrReadOnly` (read bebas, tulis khusus admin).
+- **`status` dan `priority` hanya boleh diubah pengelola** (STAFF/ADMIN).
+  `ComplaintSerializer.validate()` menolak dua field itu untuk selain pengelola,
+  termasuk saat create. Tanpa ini pemilik bisa menandai pengaduannya sendiri
+  sebagai `RESOLVED`. Perbandingan saat create memakai **default model**
+  (`_current_value()`), bukan `None` dari instance yang belum ada — kalau tidak,
+  form yang mengirim nilai default ikut ditolak padahal tidak mengubah apa pun.
+- **Hapus pengaduan diatur `CanDeleteComplaint`** di `apps/complaints/permissions.py`
+  (bukan di `accounts` supaya app itu tidak tahu model pengaduan): admin bebas,
+  mahasiswa hanya miliknya yang masih `PENDING`, staf selalu 403. Permission ini
+  hanya berlaku untuk method DELETE; untuk method lain ia selalu `true` karena
+  `IsManagerOrOwner` yang mengurus.
+- **`reporter_username` read-only dan hanya diisi untuk admin**
+  (`SerializerMethodField`). Dihitung di serializer, bukan disembunyikan di
+  frontend, supaya identitas pelapor benar-benar tidak pernah dikirim ke role lain.
+- Fasilitas tetap hanya ADMIN yang menulis (`IsAdminOrReadOnly`).
 - `reporter` read-only di serializer dan diisi dari access token (`perform_create`),
   jadi jangan kirim field itu saat membuat pengaduan.
 - Register memaksa `role=STUDENT` (field `role` tidak ada di `RegisterSerializer`,
   jadi client tidak bisa mendaftar sebagai ADMIN) **dan** menjalankan
   `validate_password()` lewat `django.contrib.auth.password_validation`.
+  Cara membuat akun `STAFF`/`ADMIN`: daftar seperti biasa, lalu ubah kolom Role
+  lewat Django admin `/admin/` pada user tersebut. `createsuperuser` sudah otomatis
+  mengisi `role=ADMIN`, jadi tidak perlu diubah manual.
 - Rate limit global aktif di `settings.py` (`AnonRateThrottle` 60/menit,
   `UserRateThrottle` 300/menit). State-nya in-memory per proses, jadi di produksi
   multi-worker angka ini tidak berlaku konsisten tanpa cache bersama.
