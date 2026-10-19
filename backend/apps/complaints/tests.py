@@ -70,6 +70,9 @@ class ComplaintAccessTests(TestCase):
         self.other_student = User.objects.create_user(
             username="student_b", password="Passw0rd!aaa", role=User.Role.STUDENT
         )
+        self.staff = User.objects.create_user(
+            username="staff_a", password="Passw0rd!aaa", role=User.Role.STAFF
+        )
         self.admin = User.objects.create_user(
             username="admin_a", password="Passw0rd!aaa", role=User.Role.ADMIN
         )
@@ -114,6 +117,13 @@ class ComplaintAccessTests(TestCase):
 
     def test_admin_list_contains_all_complaints(self):
         self.client.force_authenticate(self.admin)
+        response = self.client.get(self.list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self._ids(response), {self.own.id, self.foreign.id})
+
+    def test_staff_list_contains_all_complaints(self):
+        self.client.force_authenticate(self.staff)
         response = self.client.get(self.list_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -250,6 +260,26 @@ class ComplaintCreateTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("priority", response.data)
 
+    def test_student_sending_default_values_on_create_is_accepted(self):
+        """Nilai default model bukan perubahan, jadi tidak boleh ditolak.
+
+        Bandingannya memakai default model, bukan `None` dari instance yang
+        belum ada. Tanpa itu form yang mengirim status/prioritas default akan
+        ditolak padahal hasilnya sama persis dengan tidak mengirimnya.
+        """
+        self.client.force_authenticate(self.student)
+        response = self.client.post(
+            "/api/complaints/",
+            {
+                **self.payload,
+                "status": Complaint.Status.PENDING,
+                "priority": Complaint.Priority.MEDIUM,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
 
 @override_settings(MEDIA_ROOT=MEDIA_ROOT)
 class ComplaintStatusPermissionTests(TestCase):
@@ -257,6 +287,9 @@ class ComplaintStatusPermissionTests(TestCase):
         self.client = APIClient()
         self.student = User.objects.create_user(
             username="student_a", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.staff = User.objects.create_user(
+            username="staff_a", password="Passw0rd!aaa", role=User.Role.STAFF
         )
         self.admin = User.objects.create_user(
             username="admin_a", password="Passw0rd!aaa", role=User.Role.ADMIN
@@ -332,6 +365,186 @@ class ComplaintStatusPermissionTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.complaint.refresh_from_db()
         self.assertEqual(self.complaint.priority, Complaint.Priority.HIGH)
+
+    def test_staff_can_change_status(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.patch(
+            self.url, {"status": "IN_PROGRESS"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.complaint.refresh_from_db()
+        self.assertEqual(self.complaint.status, Complaint.Status.IN_PROGRESS)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class ComplaintDeletePermissionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_a", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.staff = User.objects.create_user(
+            username="staff_a", password="Passw0rd!aaa", role=User.Role.STAFF
+        )
+        self.admin = User.objects.create_user(
+            username="admin_a", password="Passw0rd!aaa", role=User.Role.ADMIN
+        )
+
+        facility = Facility.objects.create(
+            name="Pintu Lab", location="Gedung C - Lantai 2"
+        )
+        self.pending = Complaint.objects.create(
+            reporter=self.student,
+            facility=facility,
+            title="Pintu lab tidak terkunci",
+            description="Bisa masuk tanpa kartu.",
+        )
+        self.resolved = Complaint.objects.create(
+            reporter=self.student,
+            facility=facility,
+            title="Lampu koridor mati",
+            description="Gelap sejak malam.",
+            status=Complaint.Status.RESOLVED,
+        )
+
+    def url(self, complaint):
+        return f"/api/complaints/{complaint.id}/"
+
+    def test_student_can_delete_own_pending_complaint(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.delete(self.url(self.pending))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Complaint.objects.filter(pk=self.pending.pk).exists())
+
+    def test_student_cannot_delete_own_resolved_complaint(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.delete(self.url(self.resolved))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Complaint.objects.filter(pk=self.resolved.pk).exists())
+
+    def test_staff_cannot_delete_complaint(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.delete(self.url(self.pending))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Complaint.objects.filter(pk=self.pending.pk).exists())
+
+    def test_admin_can_delete_any_complaint(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(self.url(self.resolved))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Complaint.objects.filter(pk=self.resolved.pk).exists())
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class ComplaintReporterVisibilityTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_a", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.staff = User.objects.create_user(
+            username="staff_a", password="Passw0rd!aaa", role=User.Role.STAFF
+        )
+        self.admin = User.objects.create_user(
+            username="admin_a", password="Passw0rd!aaa", role=User.Role.ADMIN
+        )
+
+        facility = Facility.objects.create(
+            name="Meja Rusak", location="Gedung D - Lantai 1"
+        )
+        self.complaint = Complaint.objects.create(
+            reporter=self.student,
+            facility=facility,
+            title="Kaki meja patah",
+            description="Sudah goyah sejak minggu lalu.",
+        )
+        self.url = f"/api/complaints/{self.complaint.id}/"
+
+    def test_admin_sees_reporter_username(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["reporter_username"], "student_a")
+
+    def test_student_does_not_see_reporter_username(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["reporter_username"])
+
+    def test_staff_sees_complaint_without_reporter_username(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["reporter_username"])
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class ComplaintSuperuserRoleTests(TestCase):
+    """Superuser tidak memberi hak apa pun di aplikasi.
+
+    `is_superuser` hanya mengatur akses ke situs admin Django. Kalau ikut
+    dihitung sebagai admin, akun yang berlabel STUDENT akan melihat seluruh
+    pengaduan orang lain beserta nama pelapornya, persis seperti yang terjadi
+    pada akun yang dibuat lewat createsuperuser sebelum role diisi manual.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_a", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.super_student = User.objects.create_superuser(
+            username="root", password="Passw0rd!aaa"
+        )
+        # Skenario yang pernah terjadi di database: superuser yang role-nya
+        # masih STUDENT karena diisi manual sebelum manager diperbaiki.
+        self.super_student.role = User.Role.STUDENT
+        self.super_student.save(update_fields=["role"])
+
+        facility = Facility.objects.create(
+            name="Pintu Lab", location="Gedung C - Lantai 2"
+        )
+        self.own = Complaint.objects.create(
+            reporter=self.super_student,
+            facility=facility,
+            title="Kaki meja labs patah",
+            description="Sudah goyah sejak minggu lalu.",
+        )
+        self.foreign = Complaint.objects.create(
+            reporter=self.student,
+            facility=facility,
+            title="Pintu lab tidak terkunci",
+            description="Bisa masuk tanpa kartu.",
+        )
+
+    def test_superuser_with_student_role_only_sees_own_complaints(self):
+        self.client.force_authenticate(self.super_student)
+        response = self.client.get("/api/complaints/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual({item["id"] for item in response.data}, {self.own.id})
+
+    def test_superuser_with_student_role_cannot_read_foreign_complaint(self):
+        self.client.force_authenticate(self.super_student)
+        response = self.client.get(f"/api/complaints/{self.foreign.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_superuser_with_student_role_does_not_see_reporter_username(self):
+        self.client.force_authenticate(self.super_student)
+        response = self.client.get(f"/api/complaints/{self.own.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["reporter_username"])
 
 
 @override_settings(MEDIA_ROOT=MEDIA_ROOT)

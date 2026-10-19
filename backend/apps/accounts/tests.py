@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
@@ -186,3 +187,19 @@ class MeViewTests(APITestCase):
         self.assertEqual(response.data["username"], "siti")
         self.assertEqual(response.data["role"], User.Role.STAFF)
         self.assertNotIn("password", response.data)
+
+
+class CreateSuperUserRoleTests(TestCase):
+    def test_create_superuser_defaults_to_admin_role(self):
+        """createsuperuser tidak boleh menyisakan role=STUDENT.
+
+        Otorisasi API hanya membaca field `role`, jadi superuser yang role-nya
+        masih STUDENT akan berperilaku seperti mahasiswa meski punya akses penuh
+        ke /admin/ Django.
+        """
+        user = User.objects.create_superuser(
+            username="root", password="Rumah-Kampus-7"
+        )
+
+        self.assertTrue(user.is_superuser)
+        self.assertEqual(user.role, User.Role.ADMIN)
