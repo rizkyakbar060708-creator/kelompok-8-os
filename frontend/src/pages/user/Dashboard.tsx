@@ -11,7 +11,6 @@ import { Link } from "react-router-dom"
 
 import Card from "../../components/ui/Card"
 import StatusBadge from "../../components/ui/StatusBadge"
-import { useAuth } from "../../contexts/AuthContext"
 import { getComplaints } from "../../services/complaintService"
 import { getFacilities } from "../../services/facilityService"
 import {
@@ -25,7 +24,6 @@ import {
 const MAX_RECENT = 5
 
 function Dashboard() {
-  const { user } = useAuth()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [error, setError] = useState("")
 
@@ -43,13 +41,11 @@ function Dashboard() {
           return
         }
 
-        // Filter hanya untuk tampilan. Endpoint /complaints/ masih mengembalikan
-        // seluruh pengaduan untuk siapa pun, jadi ini bukan batas akses.
-        const mine = complaints.filter(
-          (complaint) => complaint.reporter === user?.id,
-        )
-
-        setRows(joinFacilities(mine, facilities))
+        // Tidak ada filter client di sini. Endpoint /complaints/ sudah
+        // menyaring di server: untuk role STUDENT, queryset-nya hanya berisi
+        // pengaduan miliknya sendiri. Menyalin filter yang sama di browser
+        // hanya memberi kesan palsu bahwa akses dibatasi di dua tempat.
+        setRows(joinFacilities(complaints.items, facilities.items))
         setError("")
       } catch {
         if (!active) {
@@ -66,7 +62,7 @@ function Dashboard() {
     return () => {
       active = false
     }
-  }, [user?.id])
+  }, [])
 
   const stats = buildStats(rows ?? [])
   const recent = (rows ?? []).slice(0, MAX_RECENT)

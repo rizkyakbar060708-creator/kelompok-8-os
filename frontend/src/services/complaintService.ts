@@ -1,8 +1,10 @@
-import api from "./api";
+import api, { unwrapList, type ListEnvelope } from "./api";
 
 export interface Complaint {
   id: number;
   reporter: number;
+  // Hanya diisi untuk role ADMIN; backend mengirim null untuk role lain.
+  reporter_username?: string | null;
   facility: number;
   title: string;
   description: string;
@@ -21,17 +23,21 @@ export interface CreateComplaintPayload {
   image?: File | null;
 }
 
-// TODO(backend): endpoint ini mengembalikan SELURUH pengaduan untuk siapa pun yang
-// terautentikasi, karena ComplaintsView belum punya get_queryset() scoping per user.
-// Filter `reporter === user.id` di dashboard hanya kosmetik (render), bukan akses
-// control. Shahih bilangnya setelah backend menambah:
-//   - ComplaintListCreateView.get_queryset() -> filter reporter=request.user
-//   - ComplaintDetailView -> ownership check
-//   - GET /api/complaints/stats/ untuk agregasi admin (dashboard admin sekarang
-//     menghitung di client dari list penuh, dan endpoint ini belum ada)
-export const getComplaints = async (): Promise<Complaint[]> => {
+// Hanya status dan priority yang boleh dikirim lewat sini; field lain ikut
+// ditolak backend untuk role yang tidak berhak.
+export interface UpdateComplaintPayload {
+  status?: Complaint["status"];
+  priority?: Complaint["priority"];
+}
+
+// Endpoint ini mengembalikan SELURUH baris tanpa paginasi, jadi filter,
+// pencarian, dan statistik masih dihitung di client sampai backend menambahkan
+// paginasi dan endpoint agregasi. Envelope dikembalikan apa adanya supaya
+// pemanggil tahu apakah angka yang dihitungnya mencakup semua baris atau hanya
+// halaman pertama.
+export const getComplaints = async (): Promise<ListEnvelope<Complaint>> => {
   const response = await api.get("/complaints/");
-  return response.data;
+  return unwrapList<Complaint>(response.data);
 };
 
 export const getComplaintDetail = async (
@@ -62,4 +68,17 @@ export const createComplaint = async (
   // file dan field biasa ikut jadi rusak.
   const response = await api.post("/complaints/", formData);
   return response.data;
+};
+
+// PATCH dipakai, bukan PUT, supaya hanya field yang dikirim yang berubah.
+export const updateComplaint = async (
+  id: number,
+  payload: UpdateComplaintPayload,
+): Promise<Complaint> => {
+  const response = await api.patch(`/complaints/${id}/`, payload);
+  return response.data;
+};
+
+export const deleteComplaint = async (id: number): Promise<void> => {
+  await api.delete(`/complaints/${id}/`);
 };

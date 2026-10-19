@@ -1,27 +1,79 @@
-import { Plus, Search, SearchX, LoaderCircle, AlertCircle } from "lucide-react"
-import { Link } from "react-router-dom"
+import {
+  AlertCircle,
+  Clock3,
+  LoaderCircle,
+  Plus,
+  Search,
+  SearchX,
+  TriangleAlert,
+  X,
+} from "lucide-react"
+import { Link, useSearchParams } from "react-router-dom"
 import { useEffect, useState } from "react"
 
 import ComplaintCard from "../../components/complaint/ComplaintCard"
 import EmptyState from "../../components/ui/EmptyState"
+import { useAuth } from "../../contexts/AuthContext"
 import {
   getComplaints,
   type Complaint,
 } from "../../services/complaintService"
 import { getFacilities } from "../../services/facilityService"
 import { joinFacilities, type ComplaintRow } from "../../utils/complaintStats"
+import { STAFF } from "../../utils/roles"
 
 type Status = Complaint["status"] | "all"
+type Priority = Complaint["priority"] | "all"
+
+const STATUS_OPTIONS: { value: Status; label: string }[] = [
+  { value: "all", label: "Semua Status" },
+  { value: "PENDING", label: "Menunggu" },
+  { value: "IN_PROGRESS", label: "Diproses" },
+  { value: "RESOLVED", label: "Selesai" },
+  { value: "REJECTED", label: "Ditolak" },
+]
+
+const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
+  { value: "all", label: "Semua Prioritas" },
+  { value: "HIGH", label: "Tinggi" },
+  { value: "MEDIUM", label: "Sedang" },
+  { value: "LOW", label: "Rendah" },
+]
+
+const isStatus = (value: string | null): value is Status =>
+  STATUS_OPTIONS.some((option) => option.value === value)
+
+const isPriority = (value: string | null): value is Priority =>
+  PRIORITY_OPTIONS.some((option) => option.value === value)
 
 function Complaints() {
+  const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<Status>("all")
   const [error, setError] = useState("")
+  const [search, setSearch] = useState("")
+  // Filter status dan prioritas datang dari query string supaya tautan pintasan
+  // dari dashboard (mis. ?status=PENDING) langsung bekerja dan tombol "kembali"
+  // browser mengembalikan keadaan filter yang sama. Nilai yang tidak dikenal
+  // di URL diperlakukan sebagai "all" supaya parameter rusak tidak membuat
+  // daftar kosong tanpa penjelasan.
+  const statusParam = searchParams.get("status")
+  const priorityParam = searchParams.get("priority")
+  const statusFilter: Status = isStatus(statusParam) ? statusParam : "all"
+  const priorityFilter: Priority = isPriority(priorityParam)
+    ? priorityParam
+    : "all"
   // Retry memakai state, bukan window.location.reload(), supaya state aplikasi
   // (filter pencarian, hasil scroll) tidak ikut hilang setiap kali user
   // menekan tombol muat ulang.
   const [retryKey, setRetryKey] = useState(0)
+
+  // Staf memakai halaman ini untuk menindaklanjuti laporan orang lain, bukan
+  // untuk melapor, jadi tombol buat pengaduan disembunyikan dari sana.
+  // Perhatikan: ini hanya menghilangkan tombol. Backend sebenarnya tetap
+  // mengizinkan role mana pun membuat pengaduan, jadi menyembunyikan tombol
+  // bukan bukti soal hak akses.
+  const canCreate = user?.role !== STAFF
 
   useEffect(() => {
     let active = true
@@ -39,7 +91,7 @@ function Complaints() {
           return
         }
 
-        setRows(joinFacilities(complaints, facilities))
+        setRows(joinFacilities(complaints.items, facilities.items))
         setError("")
       } catch {
         if (!active) {
@@ -60,6 +112,24 @@ function Complaints() {
 
   const complaints = rows ?? []
   const isLoading = rows === null
+  const hasActiveFilter = statusFilter !== "all" || priorityFilter !== "all"
+
+  const setFilterParam = (key: "status" | "priority", value: string) => {
+    const next = new URLSearchParams(searchParams)
+
+    if (value === "all") {
+      next.delete(key)
+    } else {
+      next.set(key, value)
+    }
+
+    setSearchParams(next, { replace: true })
+  }
+
+  const clearFilters = () => {
+    setSearch("")
+    setSearchParams(new URLSearchParams(), { replace: true })
+  }
 
   const filteredComplaints = complaints.filter((complaint) => {
     const matchesSearch = complaint.title
@@ -69,8 +139,15 @@ function Complaints() {
     const matchesStatus =
       statusFilter === "all" || complaint.status === statusFilter
 
-    return matchesSearch && matchesStatus
+    const matchesPriority =
+      priorityFilter === "all" || complaint.priority === priorityFilter
+
+    return matchesSearch && matchesStatus && matchesPriority
   })
+
+  const pendingCount = complaints.filter(
+    (complaint) => complaint.status === "PENDING",
+  ).length
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -79,17 +156,21 @@ function Complaints() {
           <p className="eyebrow mb-2">Daftar laporan</p>
           <h1 className="page-title">Pengaduan</h1>
           <p className="page-subtitle">
-            Kelola dan pantau pengaduan fasilitas kamu.
+            {canCreate
+              ? "Kelola dan pantau pengaduan fasilitas kamu."
+              : "Tinjau dan tindak lanjuti pengaduan yang masuk."}
           </p>
         </div>
 
-        <Link
-          to="/complaints/create"
-          className="btn-primary w-full sm:w-auto"
-        >
-          <Plus size={18} />
-          Buat Pengaduan
-        </Link>
+        {canCreate && (
+          <Link
+            to="/complaints/create"
+            className="btn-primary w-full sm:w-auto"
+          >
+            <Plus size={18} />
+            Buat Pengaduan
+          </Link>
+        )}
       </div>
 
       <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center">
@@ -112,18 +193,69 @@ function Complaints() {
         <select
           value={statusFilter}
           onChange={(event) =>
-            setStatusFilter(event.target.value as Status)
+            setFilterParam("status", event.target.value)
           }
           aria-label="Filter status pengaduan"
-          className="input-base cursor-pointer py-2.5 sm:w-56"
+          className="input-base cursor-pointer py-2.5 sm:w-48"
         >
-          <option value="all">Semua Status</option>
-          <option value="PENDING">Menunggu</option>
-          <option value="IN_PROGRESS">Diproses</option>
-          <option value="RESOLVED">Selesai</option>
-          <option value="REJECTED">Ditolak</option>
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={priorityFilter}
+          onChange={(event) =>
+            setFilterParam("priority", event.target.value)
+          }
+          aria-label="Filter prioritas pengaduan"
+          className="input-base cursor-pointer py-2.5 sm:w-48"
+        >
+          {PRIORITY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </div>
+
+      {!isLoading && !error && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFilterParam("status", "PENDING")}
+            disabled={statusFilter === "PENDING"}
+            className="glass-chip h-9 px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-50/90 disabled:cursor-default disabled:border-amber-300 disabled:bg-amber-100/95"
+          >
+            <Clock3 size={14} />
+            Menunggu tindak lanjut
+            <span className="tabular-nums">{pendingCount}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterParam("priority", "HIGH")}
+            disabled={priorityFilter === "HIGH"}
+            className="glass-chip h-9 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50/90 disabled:cursor-default disabled:border-indigo-300 disabled:bg-indigo-100/95"
+          >
+            <TriangleAlert size={14} />
+            Prioritas tinggi
+          </button>
+
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="glass-chip h-9 px-3 text-xs font-semibold text-slate-600 transition hover:bg-white/85"
+            >
+              <X size={14} />
+              Reset filter
+            </button>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-500">
@@ -163,6 +295,7 @@ function Complaints() {
                 },
               )}
               status={complaint.status}
+              reporter={complaint.reporter_username}
             />
           ))}
         </div>
@@ -180,16 +313,15 @@ function Complaints() {
               : "Coba gunakan kata kunci atau filter yang berbeda."
           }
           action={
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("")
-                setStatusFilter("all")
-              }}
-              className="btn-secondary"
-            >
-              Reset filter
-            </button>
+            hasActiveFilter || search ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="btn-secondary"
+              >
+                Reset filter
+              </button>
+            ) : undefined
           }
         />
       )}

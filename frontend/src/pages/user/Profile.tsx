@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 
 import Card from "../../components/ui/Card"
 import { useAuth } from "../../contexts/AuthContext"
+import { roleLabel } from "../../utils/roles"
 
 function Profile() {
   const { user, logout } = useAuth()
@@ -18,8 +19,11 @@ function Profile() {
   const details = [
     { label: "ID Pengguna", value: user?.id?.toString() || "-", icon: IdCard },
     { label: "Username", value: user?.username || "-", icon: UserRound },
-    { label: "Peran", value: user?.role || "-", icon: ShieldCheck },
-    { label: "Status Akun", value: "Aktif", icon: CalendarClock },
+    { label: "Peran", value: roleLabel(user?.role), icon: ShieldCheck },
+    // Jangan menulis "Aktif" di sini. Field is_active ada di model User tapi
+    // tidak pernah diekspos endpoint mana pun, jadi status akun yang tampil
+    // hanya akan jadi tebakan.
+    { label: "Status Akun", value: "Belum tersedia", icon: CalendarClock },
   ]
 
   return (
@@ -48,7 +52,7 @@ function Profile() {
 
             <p className="glass-pill mt-1 gap-1.5 border-sky-200 bg-sky-50/95 px-2.5 py-1 text-xs font-semibold capitalize text-sky-800">
               <ShieldCheck size={13} />
-              {user?.role || "Mahasiswa"}
+              {roleLabel(user?.role)}
             </p>
 
             <p className="mt-3 text-sm text-slate-600">
@@ -83,6 +87,12 @@ function Profile() {
           )
         })}
       </div>
+
+      <p className="text-xs leading-5 text-slate-500">
+        Status aktif/nonaktif akun belum ditampilkan karena backend belum
+        menyediakan endpoint yang mengekspos data tersebut. Saat ini keanggotaan
+        aplikasi masih ditentukan oleh sesi login yang sedang berjalan.
+      </p>
 
       <Card>
         <h3 className="text-base font-semibold tracking-tight text-slate-900">

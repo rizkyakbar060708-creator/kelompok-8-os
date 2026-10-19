@@ -1,24 +1,83 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
+  BarChart3,
   Bell,
   ClipboardList,
   FileText,
   Home,
   LogOut,
   Menu,
+  PencilRuler,
   ShieldCheck,
   User,
   X,
+  type LucideIcon,
 } from "lucide-react"
 import { useState } from "react"
 
 import { useAuth } from "../contexts/AuthContext"
+import {
+  ADMIN,
+  ROLES,
+  STUDENT,
+  roleLabel,
+  type Role,
+} from "../utils/roles"
 
-const navItems = [
-  { name: "Dashboard", path: "/dashboard", icon: Home, adminOnly: false },
-  { name: "Pengaduan", path: "/complaints", icon: FileText, adminOnly: false },
-  { name: "Admin", path: "/admin", icon: ShieldCheck, adminOnly: true },
-  { name: "Profil", path: "/profile", icon: User, adminOnly: false },
+const ALL_ROLES = ROLES
+
+interface NavItem {
+  name: string;
+  path: string;
+  icon: LucideIcon;
+  roles: readonly Role[];
+  // NavLink aktif secara default kalau path-nya prefix dari URL saat ini, jadi
+  // "/admin" ikut menyala saat pengguna berada di "/admin/reports". `end` memaksa
+  // pencocokan persis dan dipakai pada route induk.
+  end?: boolean;
+}
+
+// Menu ditampilkan sesuai peran, bukan disembunyikan lalu ditolak guard, supaya
+// role tidak melihat tautan ke halaman yang memang bukan halamannya. Ini murni
+// kosmetik: setiap route tetap dijaga ProtectedRoute di AppRoutes, dan filter di
+// sini tidak pernah jadi pengganti otorisasi backend.
+//
+// Item "Dashboard" hanya untuk STUDENT karena /dashboard langsung dialihkan ke
+// /admin untuk admin dan ke /complaints untuk staf. MEMASUKKAN STAFF ke sini
+// hanya membuat tautannya berbalik ke daftar pengaduan begitu diklik.
+//
+// Daftar datar tanpa judul grup. Label pemisah tidak menambah informasi apa pun
+// dan hanya membuat sidebar terlihat lebih jarang terisi, terutama untuk role
+// yang hanya punya satu atau dua item. Urutannya masih mengikuti urutan grup
+// yang pernah ada, hanya pemisah visualnya yang dihapus.
+const navItems: readonly NavItem[] = [
+  { name: "Dashboard", path: "/dashboard", icon: Home, roles: [STUDENT] },
+  {
+    name: "Pengaduan",
+    path: "/complaints",
+    icon: FileText,
+    roles: ALL_ROLES,
+  },
+  { name: "Profil", path: "/profile", icon: User, roles: ALL_ROLES },
+  {
+    name: "Dashboard",
+    path: "/admin",
+    icon: ShieldCheck,
+    roles: [ADMIN],
+    end: true,
+  },
+  {
+    name: "Kelola Fasilitas",
+    path: "/admin/facilities",
+    icon: PencilRuler,
+    roles: [ADMIN],
+  },
+  {
+    name: "Statistik",
+    path: "/admin/reports",
+    icon: BarChart3,
+    roles: [ADMIN],
+  },
 ]
 
 function DashboardLayout() {
@@ -80,14 +139,10 @@ function DashboardLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-7">
-          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-            Workspace
-          </p>
-
+        <nav className="flex-1 overflow-y-auto px-3 py-7">
           <div className="space-y-1.5">
             {navItems
-              .filter((item) => !item.adminOnly || user?.role === "ADMIN")
+              .filter((item) => item.roles.includes(user?.role ?? STUDENT))
               .map((item) => {
                 const Icon = item.icon
 
@@ -95,10 +150,13 @@ function DashboardLayout() {
                   <NavLink
                     key={item.path}
                     to={item.path}
+                    end={item.end}
                     onClick={() => setSidebarOpen(false)}
                     className={({ isActive }) =>
                       `group flex items-center gap-3 rounded-xl border py-3 pl-4 pr-3 text-sm font-medium ${
-                        isActive ? "nav-link-active nav-link-accent" : "nav-link"
+                        isActive
+                          ? "nav-link-active nav-link-accent"
+                          : "nav-link"
                       }`
                     }
                   >
@@ -121,7 +179,7 @@ function DashboardLayout() {
                 {user?.username || "Pengguna"}
               </p>
               <p className="truncate text-xs capitalize text-slate-500">
-                {user?.role || "Mahasiswa"}
+                {roleLabel(user?.role)}
               </p>
             </div>
           </div>

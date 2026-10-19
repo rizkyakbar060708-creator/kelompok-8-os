@@ -1,4 +1,4 @@
-import { MapPin, Calendar, ChevronRight } from "lucide-react"
+import { MapPin, Calendar, ChevronRight, User } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import StatusBadge from "../ui/StatusBadge"
@@ -16,6 +16,8 @@ interface ComplaintCardProps {
   location: string
   date: string
   status: Status
+  // Hanya diisi untuk role ADMIN; backend mengirim null untuk role lain.
+  reporter?: string | null
 }
 
 function ComplaintCard({
@@ -25,6 +27,7 @@ function ComplaintCard({
   location,
   date,
   status,
+  reporter,
 }: ComplaintCardProps) {
   return (
     <article className="glass-card glass-card-hover group rounded-2xl p-5">
@@ -52,6 +55,13 @@ function ComplaintCard({
           <Calendar size={16} className="text-slate-500" />
           {date}
         </div>
+
+        {reporter && (
+          <div className="flex items-center gap-2">
+            <User size={16} className="text-slate-500" />
+            {reporter}
+          </div>
+        )}
       </div>
 
       <div className="mt-5 border-t border-slate-900/8 pt-4">

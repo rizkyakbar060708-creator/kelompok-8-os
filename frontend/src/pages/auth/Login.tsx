@@ -11,6 +11,7 @@ import api from "../../services/api";
 import axios from "axios";
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../../constant";
 import { useAuth } from "../../contexts/AuthContext";
+import { isAdmin } from "../../utils/roles";
 
 function Login() {
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ function Login() {
       const user = await refreshUser();
 
       if (user) {
-        navigate(user.role === "ADMIN" ? "/admin" : "/dashboard");
+        navigate(isAdmin(user.role) ? "/admin" : "/dashboard");
       } else {
         setError("Login berhasil, tetapi data pengguna gagal dimuat.");
       }

@@ -9,11 +9,12 @@ import {
 
 import api from "../services/api";
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constant";
+import { parseRole, type Role } from "../utils/roles";
 
 export interface User {
   id: number;
   username: string;
-  role: string;
+  role: Role;
 }
 
 interface AuthContextType {
@@ -25,6 +26,19 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+// /auth/me/ mengirim role sebagai string biasa. Respons dinormalisasi di satu
+// tempat supaya setiap konsumen context benar-benar memegang Role, bukan string
+// bebas yang harus dibandingkan manual di tiap file.
+function toUser(data: unknown): User {
+  const raw = (data ?? {}) as Partial<User>;
+
+  return {
+    id: Number(raw.id ?? 0),
+    username: typeof raw.username === "string" ? raw.username : "",
+    role: parseRole(raw.role),
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -39,10 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const response = await api.get("/auth/me/");
+      const currentUser = toUser(response.data);
 
-      setUser(response.data);
+      setUser(currentUser);
 
-      return response.data as User;
+      return currentUser;
     } catch {
       clearSession();
       setUser(null);
@@ -69,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const response = await api.get("/auth/me/");
 
         if (active) {
-          setUser(response.data);
+          setUser(toUser(response.data));
         }
       } catch (error) {
         console.error("Failed to get current user:", error);
