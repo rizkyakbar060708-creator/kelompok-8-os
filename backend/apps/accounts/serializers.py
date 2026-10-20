@@ -3,6 +3,7 @@ from django.contrib.auth import password_validation
 from django.core.exceptions import (
     ValidationError as DjangoValidationError,
 )
+from django.db.models import Count
 from rest_framework import serializers
 
 User = get_user_model()
@@ -59,3 +60,67 @@ class UserSerializer(serializers.ModelSerializer):
             "username",
             "role",
         ]
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Serializer admin untuk manajemen pengguna.
+
+    complaints_count dihitung di queryset lewat annotate(Count("complaints")),
+    bukan query per baris. Semua field read-only kecuali role, dan password
+    sengaja tidak pernah diekspos (tidak ada field password, tidak ada hash).
+    """
+
+    complaints_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "role",
+            "is_active",
+            "date_joined",
+            "complaints_count",
+        ]
+        read_only_fields = [
+            "id",
+            "username",
+            "is_active",
+            "date_joined",
+            "complaints_count",
+        ]
+
+    def validate_role(self, value):
+        """Role harus salah satu dari User.Role; nilai lain ditolak 400."""
+        if value not in dict(User.Role.choices):
+            raise serializers.ValidationError("Role tidak valid.")
+
+        return value
+
+
+class AdminPasswordResetSerializer(serializers.Serializer):
+    """Reset password oleh admin.
+
+    Password hanya masuk sebagai input (write_only), tidak pernah dikembalikan
+    atau disimpan dalam bentuk teks. Validasi pakai
+    django.contrib.auth.password_validation.validate_password dengan instance
+    user target supaya validator bawaan Django (termasuk similarity ke
+    username) tetap berlaku. Simpan lewat set_password di view, bukan di sini.
+    """
+
+    password = serializers.CharField(write_only=True, required=True)
+
+    def validate_password(self, value):
+        target = self.context.get("user")
+
+        if target is None:
+            raise serializers.ValidationError("User target tidak diketahui.")
+
+        try:
+            password_validation.validate_password(value, user=target)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(
+                {"password": list(error.messages)}
+            ) from error
+
+        return value

@@ -7,8 +7,33 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
+from apps.accounts.views import (
+    UserListView,
+    UserDetailView,
+    UserPasswordResetView,
+)
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+
+    # Manajemen pengguna khusus admin. Daftarkan langsung di sini (tanpa
+    # include apps.accounts.urls) supaya tidak bentrok dengan prefix
+    # /api/auth/ yang sudah ada (register, me, blacklist).
+    path(
+        "api/users/",
+        UserListView.as_view(),
+        name="user-list",
+    ),
+    path(
+        "api/users/<int:pk>/",
+        UserDetailView.as_view(),
+        name="user-detail",
+    ),
+    path(
+        "api/users/<int:pk>/password/",
+        UserPasswordResetView.as_view(),
+        name="user-password-reset",
+    ),
 
     path(
         "api/auth/login/",

@@ -46,6 +46,18 @@ class IsAdminOrReadOnly(BasePermission):
         return is_admin(request.user)
 
 
+class IsAdmin(BasePermission):
+    """Hanya akun dengan role ADMIN, untuk semua method, tanpa pengecualian read.
+
+    Sengaja jangan memakai IsAdminOrReadOnly untuk manajemen pengguna karena
+    itu membuka read untuk semua role. Endpoint /api/users/ harus tetap
+    tertutup untuk non-admin baik saat GET maupun PATCH/POST.
+    """
+
+    def has_permission(self, request, view):
+        return is_admin(request.user)
+
+
 class IsManagerOrOwner(BasePermission):
     """Batasi akses ke objek milik sendiri; pengelola bebas akses semuanya.
 

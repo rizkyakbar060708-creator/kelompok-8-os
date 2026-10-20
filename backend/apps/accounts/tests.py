@@ -203,3 +203,197 @@ class CreateSuperUserRoleTests(TestCase):
 
         self.assertTrue(user.is_superuser)
         self.assertEqual(user.role, User.Role.ADMIN)
+
+
+USER_LIST_URL = "/api/users/"
+USER_PASSWORD_URL = "/api/auth/login/"
+
+
+def _make_user(username, role):
+    return User.objects.create_user(
+        username=username,
+        password="Rumah-Kampus-7",
+        role=role,
+    )
+
+
+class UserManagementTests(APITestCase):
+    def setUp(self):
+        self.admin = _make_user("admin", User.Role.ADMIN)
+        self.staff = _make_user("staff", User.Role.STAFF)
+        self.student = _make_user("budi", User.Role.STUDENT)
+        self.other = _make_user("siti", User.Role.STUDENT)
+
+    def _auth(self, user):
+        self.client.force_authenticate(user)
+
+    def test_staff_and_student_rejected_get_list(self):
+        for user in (self.staff, self.student):
+            self._auth(user)
+            response = self.client.get(USER_LIST_URL)
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_and_student_rejected_patch_role(self):
+        for user in (self.staff, self.student):
+            self._auth(user)
+            response = self.client.patch(
+                f"/api/users/{self.other.pk}/",
+                {"role": User.Role.ADMIN},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_get_list_and_complaints_count(self):
+        self._auth(self.admin)
+        self.client.post(
+            "/api/auth/register/",
+            {"username": "pelapor", "password": "Rumah-Kampus-7"},
+            format="json",
+        )
+        pelapor = User.objects.get(username="pelapor")
+        from apps.complaints.models import Complaint
+        from apps.facilities.models import Facility
+
+        facility = Facility.objects.create(
+            name="Gedung A",
+            description="Gedung kampus",
+            location="Lantai 2",
+            status="ACTIVE",
+        )
+
+        Complaint.objects.create(
+            reporter=pelapor,
+            facility=facility,
+            title="Rusak",
+            description="Kursi rusak",
+        )
+
+        response = self.client.get(USER_LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data_by_username = {item["username"]: item for item in response.data}
+        self.assertEqual(data_by_username["pelapor"]["complaints_count"], 1)
+        self.assertEqual(data_by_username["admin"]["complaints_count"], 0)
+        self.assertNotIn("password", response.data[0])
+
+    def test_admin_can_change_role_of_other_user(self):
+        self._auth(self.admin)
+        response = self.client.patch(
+            f"/api/users/{self.other.pk}/",
+            {"role": User.Role.ADMIN},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["role"], User.Role.ADMIN)
+        self.assertEqual(
+            User.objects.get(pk=self.other.pk).role, User.Role.ADMIN
+        )
+
+    def test_admin_cannot_change_own_role(self):
+        self._auth(self.admin)
+        response = self.client.patch(
+            f"/api/users/{self.admin.pk}/",
+            {"role": User.Role.STAFF},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("role", response.data)
+
+    def test_invalid_role_is_rejected(self):
+        self._auth(self.admin)
+        response = self.client.patch(
+            f"/api/users/{self.other.pk}/",
+            {"role": "SUPERUSER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("role", response.data)
+
+    def test_response_does_not_contain_password(self):
+        self._auth(self.admin)
+        response = self.client.get(USER_LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for item in response.data:
+            self.assertNotIn("password", item)
+            self.assertNotIn("last_login", item)
+            self.assertNotIn("groups", item)
+
+
+class UserPasswordResetTests(APITestCase):
+    def setUp(self):
+        self.admin = _make_user("admin", User.Role.ADMIN)
+        self.staff = _make_user("staff", User.Role.STAFF)
+        self.student = _make_user("budi", User.Role.STUDENT)
+        self.target = _make_user("siti", User.Role.STUDENT)
+
+    def _auth(self, user):
+        self.client.force_authenticate(user)
+
+    def test_staff_and_student_rejected_reset(self):
+        for user in (self.staff, self.student):
+            self._auth(user)
+            response = self.client.post(
+                f"/api/users/{self.target.pk}/password/",
+                {"password": "Baru-Aman-123"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_reset_other_user_password(self):
+        self._auth(self.admin)
+        response = self.client.post(
+            f"/api/users/{self.target.pk}/password/",
+            {"password": "Baru-Aman-123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertIsNone(response.data)
+        self.assertEqual(response.content, b"")
+
+        # Password baru berhasil login.
+        login = self.client.post(
+            USER_PASSWORD_URL,
+            {"username": "siti", "password": "Baru-Aman-123"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+        self.assertIn("access", login.data)
+
+        # Password lama tidak dapat digunakan lagi.
+        old_login = self.client.post(
+            USER_PASSWORD_URL,
+            {"username": "siti", "password": "Rumah-Kampus-7"},
+            format="json",
+        )
+        self.assertEqual(old_login.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_weak_password_is_rejected(self):
+        self._auth(self.admin)
+        response = self.client.post(
+            f"/api/users/{self.target.pk}/password/",
+            {"password": "1234"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)
+
+    def test_admin_cannot_reset_own_password(self):
+        self._auth(self.admin)
+        response = self.client.post(
+            f"/api/users/{self.admin.pk}/password/",
+            {"password": "Baru-Aman-123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)
+
+    def test_response_does_not_contain_password(self):
+        self._auth(self.admin)
+        response = self.client.post(
+            f"/api/users/{self.target.pk}/password/",
+            {"password": "Baru-Aman-123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertIsNone(response.data)
+        self.assertEqual(response.content, b"")
