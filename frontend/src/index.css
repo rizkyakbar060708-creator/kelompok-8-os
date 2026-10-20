@@ -742,8 +742,11 @@
   /* Rounded-square icon chip (same glass recipe, softer corner radius) */
   .glass-chip {
     position: relative;
-    display: grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    white-space: nowrap;
     border: 1px solid rgba(255, 255, 255, 0.68);
     border-radius: 0.85rem;
     background: rgba(255, 255, 255, 0.6);

@@ -11,6 +11,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  Fragment,
   type FormEvent,
 } from "react"
 
@@ -35,6 +36,97 @@ const ROLE_OPTIONS: { value: Extract<Role, "STUDENT" | "STAFF" | "ADMIN">; label
   { value: "STAFF", label: "Petugas" },
   { value: "ADMIN", label: "Administrator" },
 ]
+
+// Form atur ulang password yang dipakai baik di tabel desktop (baris kedua)
+// maupun di kartu mobile, sehingga tidak ada duplikasi markup.
+function ResetPasswordForm({
+  target,
+  resetPassword,
+  setResetPassword,
+  handleResetPassword,
+  resetting,
+  openReset,
+  resetError,
+}: {
+  target: AdminUser
+  resetPassword: string
+  setResetPassword: (value: string) => void
+  handleResetPassword: (
+    event: FormEvent<HTMLFormElement>,
+    target: AdminUser,
+  ) => void
+  resetting: number | null
+  openReset: (id: number | null) => void
+  resetError: string
+}) {
+  return (
+    <form
+      onSubmit={(event) => handleResetPassword(event, target)}
+      className="space-y-3"
+    >
+      <div>
+        <label
+          htmlFor={`reset-password-${target.id}`}
+          className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"
+        >
+          Password baru untuk {target.username}
+        </label>
+        <input
+          id={`reset-password-${target.id}`}
+          type="password"
+          value={resetPassword}
+          onChange={(event) => setResetPassword(event.target.value)}
+          disabled={resetting === target.id}
+          minLength={8}
+          required
+          autoComplete="new-password"
+          aria-label="Password baru"
+          className="input-base"
+        />
+      </div>
+
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={() => openReset(null)}
+          disabled={resetting === target.id}
+          className="btn-secondary w-full sm:w-auto"
+        >
+          Batal
+        </button>
+
+        <button
+          type="submit"
+          disabled={resetting === target.id}
+          className="btn-primary w-full sm:w-auto"
+        >
+          {resetting === target.id ? (
+            <>
+              <LoaderCircle size={16} className="animate-spin" />
+              Mengatur ulang...
+            </>
+          ) : (
+            <>
+              <Save size={16} />
+              Atur Ulang Password
+            </>
+          )}
+        </button>
+      </div>
+
+      {resetError && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="alert-error flex items-start gap-3 rounded-xl px-4 py-3 text-sm mt-3"
+        >
+          <RefreshCw size={17} className="mt-0.5 shrink-0 text-red-600" />
+          <span>{resetError}</span>
+        </div>
+      )}
+    </form>
+  );
+}
 
 function Users() {
   const { user } = useAuth()
@@ -297,7 +389,7 @@ function Users() {
       ) : visibleUsers.length > 0 ? (
         <>
           <table
-            className="hidden lg:block w-full text-sm divide-y divide-slate-900/[0.07]"
+            className="hidden lg:table w-full text-sm divide-y divide-slate-900/[0.07]"
             aria-label="Daftar pengguna"
           >
             <thead className="bg-slate-900/[0.03]">
@@ -336,10 +428,10 @@ function Users() {
             </thead>
             <tbody className="divide-y divide-slate-900/[0.07]">
               {visibleUsers.map((target) => (
-                <tr
-                  key={target.id}
-                  className="transition hover:bg-white/70 group"
-                >
+                <Fragment key={target.id}>
+                  <tr
+                    className="transition hover:bg-white/70 group"
+                  >
                   <td className="px-5 py-4 sm:px-6">
                     <div className="flex items-center gap-3">
                       <span
@@ -374,7 +466,7 @@ function Users() {
                     </span>
                   </td>
 
-                  <td className="px-5 py-4 sm:px-6 text-slate-600">
+                  <td className="px-5 py-4 sm:px-6 text-slate-700">
                     <time dateTime={target.date_joined}>
                       {new Date(target.date_joined).toLocaleDateString("id-ID", {
                         year: "numeric",
@@ -384,7 +476,7 @@ function Users() {
                     </time>
                   </td>
 
-                  <td className="px-5 py-4 sm:px-6 text-slate-600 tabular-nums">
+                  <td className="px-5 py-4 sm:px-6 text-slate-700 tabular-nums">
                     {target.complaints_count}
                   </td>
 
@@ -466,11 +558,32 @@ function Users() {
                       {resetting === target.id ? (
                         <LoaderCircle size={14} className="animate-spin" />
                       ) : (
-                        <RefreshCw size={14} />
+                        <>
+                          <RefreshCw size={14} />
+                          Atur ulang password
+                        </>
                       )}
                     </button>
                   </td>
                 </tr>
+                {resetOpenId === target.id && (
+                  <tr>
+                    <td colSpan={5}>
+                      <div className="border-t border-slate-900/[0.08] px-5 py-4 sm:px-6">
+                        <ResetPasswordForm
+                      target={target}
+                      resetPassword={resetPassword}
+                      setResetPassword={setResetPassword}
+                      handleResetPassword={handleResetPassword}
+                      resetting={resetting}
+                      openReset={openReset}
+                      resetError={resetError}
+                    />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
               ))}
             </tbody>
           </table>
@@ -519,7 +632,7 @@ function Users() {
                           event.preventDefault()
                           handleSaveRole(event, target)
                         }}
-                        className="flex items-center gap-2"
+                        className="flex flex-col items-end gap-2"
                       >
                         <label
                           htmlFor={`mobile-role-select-${target.id}`}
@@ -600,74 +713,15 @@ function Users() {
 
                 {resetOpenId === target.id && (
                   <div className="border-t border-slate-900/[0.08] px-5 py-4 sm:px-6">
-                    <form
-                      onSubmit={(event) =>
-                        handleResetPassword(event, target)
-                      }
-                      className="space-y-3"
-                    >
-                      <div>
-                        <label
-                          htmlFor={`reset-password-${target.id}`}
-                          className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"
-                        >
-                          Password baru untuk {target.username}
-                        </label>
-                        <input
-                          id={`reset-password-${target.id}`}
-                          type="password"
-                          value={resetPassword}
-                          onChange={(event) =>
-                            setResetPassword(event.target.value)
-                          }
-                          disabled={resetting === target.id}
-                          minLength={8}
-                          required
-                          aria-label="Password baru"
-                          className="input-base"
-                        />
-                      </div>
-
-                      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                        <button
-                          type="button"
-                          onClick={() => openReset(null)}
-                          disabled={resetting === target.id}
-                          className="btn-secondary w-full sm:w-auto"
-                        >
-                          Batal
-                        </button>
-
-                        <button
-                          type="submit"
-                          disabled={resetting === target.id}
-                          className="btn-primary w-full sm:w-auto"
-                        >
-                          {resetting === target.id ? (
-                            <>
-                              <LoaderCircle size={16} className="animate-spin" />
-                              Mengatur ulang...
-                            </>
-                          ) : (
-                            <>
-                              <Save size={16} />
-                              Atur Ulang Password
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {resetError && (
-                        <div
-                          role="alert"
-                          aria-live="polite"
-                          className="alert-error flex items-start gap-3 rounded-xl px-4 py-3 text-sm mt-3"
-                        >
-                          <RefreshCw size={17} className="mt-0.5 shrink-0 text-red-600" />
-                          <span>{resetError}</span>
-                        </div>
-                      )}
-                    </form>
+                    <ResetPasswordForm
+                      target={target}
+                      resetPassword={resetPassword}
+                      setResetPassword={setResetPassword}
+                      handleResetPassword={handleResetPassword}
+                      resetting={resetting}
+                      openReset={openReset}
+                      resetError={resetError}
+                    />
                   </div>
                 )}
               </Card>
