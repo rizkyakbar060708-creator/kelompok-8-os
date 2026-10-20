@@ -105,4 +105,39 @@ api.interceptors.response.use(
   },
 );
 
+export interface ListEnvelope<T> {
+  items: T[];
+  // true kalau backend membalas amplop paginasi DRF ({count, results}).
+  //
+  // REST_FRAMEWORK di backend tidak punya DEFAULT_PAGINATION_CLASS, jadi
+  // endpoint daftar sekarang mengembalikan array penuh dan isPaginated bernilai
+  // false. Pengecekan ini sengaja tetap ada: kalau backend suatu saat
+  // menambahkan paginasi, halaman statistik tidak boleh diam-diam memakai
+  // angka satu halaman dan menyebutnya total keseluruhan.
+  isPaginated: boolean;
+  // Jumlah baris di server menurut backend, atau null kalau tidak dipaginasi.
+  total: number | null;
+}
+
+export function unwrapList<T>(data: unknown): ListEnvelope<T> {
+  if (Array.isArray(data)) {
+    return { items: data as T[], isPaginated: false, total: null };
+  }
+
+  const envelope = (data ?? {}) as {
+    results?: unknown;
+    count?: unknown;
+  };
+
+  if (Array.isArray(envelope.results)) {
+    return {
+      items: envelope.results as T[],
+      isPaginated: true,
+      total: typeof envelope.count === "number" ? envelope.count : null,
+    };
+  }
+
+  return { items: [], isPaginated: false, total: null };
+}
+
 export default api;

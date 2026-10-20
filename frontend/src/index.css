@@ -761,6 +761,35 @@
     border-color: rgba(99, 102, 241, 0.5);
     background: rgba(255, 255, 255, 0.66);
   }
+
+  /* ==========================================================================
+     Layer 7 — Modal dialog (Kelola Pengguna reset password)
+     Scrim sama dengan sidebar mobile (§14.5 design.md). Permukaan kaca
+     WAJIB .glass-panel rounded-3xl, fokus terpermasuk, Escape menutup.
+     ========================================================================== */
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(15, 23, 42, 0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .modal {
+    position: relative;
+    z-index: 61;
+    width: 100%;
+    max-width: 24rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    outline: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
