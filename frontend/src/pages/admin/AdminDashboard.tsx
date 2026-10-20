@@ -159,6 +159,12 @@ function AdminDashboard() {
       href: "/admin/reports",
       icon: BarChart3,
     },
+    {
+      label: "Kelola Pengguna",
+      description: "Lihat semua pengguna, ubah peran, dan atur ulang password",
+      href: "/admin/users",
+      icon: Users,
+    },
   ]
 
   return (
@@ -521,8 +527,8 @@ function AdminDashboard() {
             <p className="mt-4 flex items-start gap-2 text-xs leading-5 text-slate-500">
               <Users size={14} className="mt-0.5 shrink-0" />
               <span>
-                Kelola pengguna belum tersedia: backend belum punya endpoint
-                daftar user maupun perubahan role.
+                Kelola pengguna tersedia lewat tautan di samping atau menu
+                sidebar.
               </span>
             </p>
           </div>

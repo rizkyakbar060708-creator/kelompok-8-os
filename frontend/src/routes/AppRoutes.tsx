@@ -9,6 +9,7 @@ import Register from "../pages/auth/Register";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import FacilitiesAdmin from "../pages/admin/FacilitiesAdmin";
 import Reports from "../pages/admin/Reports";
+import Users from "../pages/admin/Users";
 import Complaints from "../pages/user/Complaints";
 import Profile from "../pages/user/Profile";
 import CreateComplaint from "../pages/user/CreateComplaint";
@@ -67,6 +68,15 @@ function AppRoutes() {
           element={
             <ProtectedRoute allowedRoles={[ADMIN]}>
               <FacilitiesAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={[ADMIN]}>
+              <Users />
             </ProtectedRoute>
           }
         />

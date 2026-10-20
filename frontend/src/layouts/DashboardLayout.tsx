@@ -10,6 +10,7 @@ import {
   PencilRuler,
   ShieldCheck,
   User,
+  Users,
   X,
   type LucideIcon,
 } from "lucide-react"
@@ -76,6 +77,12 @@ const navItems: readonly NavItem[] = [
     name: "Statistik",
     path: "/admin/reports",
     icon: BarChart3,
+    roles: [ADMIN],
+  },
+  {
+    name: "Kelola Pengguna",
+    path: "/admin/users",
+    icon: Users,
     roles: [ADMIN],
   },
 ]
