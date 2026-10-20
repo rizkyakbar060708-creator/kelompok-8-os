@@ -20,7 +20,7 @@ export const ADMIN: Role = "ADMIN";
 
 // Label Bahasa Indonesia untuk ditampilkan di UI, bukan nilai enum yang dikirim
 // ke backend. Dipakai supaya kolom "peran" tidak pernah menampilkan string
-// mentah yang tidak Reviews.
+// mentah yang tidak enak dibaca.
 export const ROLE_LABELS: Record<Role, string> = {
   STUDENT: "Mahasiswa",
   STAFF: "Petugas",

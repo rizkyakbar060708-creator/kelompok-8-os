@@ -1,7 +1,7 @@
 // DRF membalas kesalahan validasi dalam beberapa bentuk sekaligus: {"detail":
 // "..."}, {"facility": ["wajib diisi", "..."]}, atau {"non_field_errors": [...]}.
 //
-// Halaman pengaduan dan halaman fasilitas butuh membaca bentuk yang sama.
+// Halaman pengguna dan halaman fasilitas butuh membaca bentuk yang sama.
 // Fungsi ini mengumpulkan semua pesan jadi satu kalimat supaya tidak ada satu
 // halaman yang menampilkan kunci teknis mentah ("non_field_errors") ke user.
 //

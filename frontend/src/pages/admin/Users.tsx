@@ -17,6 +17,7 @@ import {
 
 import Card from "../../components/ui/Card"
 import EmptyState from "../../components/ui/EmptyState"
+import Modal from "../../components/ui/Modal"
 import { errorMessage } from "../../utils/errorMessage"
 import {
   ROLE_LABELS,
@@ -37,46 +38,54 @@ const ROLE_OPTIONS: { value: Extract<Role, "STUDENT" | "STAFF" | "ADMIN">; label
   { value: "ADMIN", label: "Administrator" },
 ]
 
-// Form atur ulang password yang dipakai baik di tabel desktop (baris kedua)
-// maupun di kartu mobile, sehingga tidak ada duplikasi markup.
+const ROLE_TONE: Record<Role, string> = {
+  STUDENT: "border-amber-200 bg-amber-50/90 text-amber-700",
+  STAFF: "border-blue-200 bg-blue-50/90 text-blue-700",
+  ADMIN: "border-indigo-200 bg-indigo-50/90 text-indigo-700",
+}
+
+function RoleBadge({ role }: { role: Role }) {
+  return (
+    <span
+      className={`glass-pill inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ${ROLE_TONE[role]}`}
+    >
+      {roleLabel(role)}
+    </span>
+  )
+}
+
 function ResetPasswordForm({
   target,
   resetPassword,
   setResetPassword,
-  handleResetPassword,
+  onSubmit,
+  onClose,
   resetting,
-  openReset,
   resetError,
 }: {
   target: AdminUser
   resetPassword: string
   setResetPassword: (value: string) => void
-  handleResetPassword: (
-    event: FormEvent<HTMLFormElement>,
-    target: AdminUser,
-  ) => void
-  resetting: number | null
-  openReset: (id: number | null) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onClose: () => void
+  resetting: boolean
   resetError: string
 }) {
   return (
-    <form
-      onSubmit={(event) => handleResetPassword(event, target)}
-      className="space-y-3"
-    >
+    <form onSubmit={onSubmit} className="space-y-3">
       <div>
         <label
-          htmlFor={`reset-password-${target.id}`}
+          htmlFor="modal-reset-password"
           className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"
         >
           Password baru untuk {target.username}
         </label>
         <input
-          id={`reset-password-${target.id}`}
+          id="modal-reset-password"
           type="password"
           value={resetPassword}
           onChange={(event) => setResetPassword(event.target.value)}
-          disabled={resetting === target.id}
+          disabled={resetting}
           minLength={8}
           required
           autoComplete="new-password"
@@ -88,8 +97,8 @@ function ResetPasswordForm({
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
-          onClick={() => openReset(null)}
-          disabled={resetting === target.id}
+          onClick={onClose}
+          disabled={resetting}
           className="btn-secondary w-full sm:w-auto"
         >
           Batal
@@ -97,10 +106,10 @@ function ResetPasswordForm({
 
         <button
           type="submit"
-          disabled={resetting === target.id}
+          disabled={resetting}
           className="btn-primary w-full sm:w-auto"
         >
-          {resetting === target.id ? (
+          {resetting ? (
             <>
               <LoaderCircle size={16} className="animate-spin" />
               Mengatur ulang...
@@ -125,7 +134,7 @@ function ResetPasswordForm({
         </div>
       )}
     </form>
-  );
+  )
 }
 
 function Users() {
@@ -174,6 +183,8 @@ function Users() {
 
   const isLoading = users === null
   const currentUserId = user?.id ?? null
+  const resetTarget = users?.find((u) => u.id === resetOpenId) ?? null
+  const isResetting = resetting !== null
 
   const visibleUsers = useMemo(() => {
     const list = users ?? []
@@ -236,24 +247,25 @@ function Users() {
   )
 
   const handleResetPassword = useCallback(
-    async (event: FormEvent<HTMLFormElement>, target: AdminUser) => {
+    async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
 
-      if (resetting === target.id) {
+      if (!resetTarget || isResetting) {
         return
       }
 
-      setResetting(target.id)
+      setResetting(resetTarget.id)
       setResetError("")
 
       try {
-        await resetUserPassword(target.id, { password: resetPassword })
+        await resetUserPassword(resetTarget.id, { password: resetPassword })
 
         setNotice(
-          `Password "${target.username}" berhasil diatur ulang. Sampaikan password baru lewat jalur yang aman.`,
+          `Password "${resetTarget.username}" berhasil diatur ulang. Sampaikan password baru lewat jalur yang aman.`,
         )
         setResetPassword("")
         setResetError("")
+        setResetting(null)
         setResetOpenId(null)
       } catch (requestError: unknown) {
         setResetError(
@@ -266,7 +278,7 @@ function Users() {
         setResetting(null)
       }
     },
-    [resetting, resetPassword],
+    [resetTarget, isResetting, resetPassword],
   )
 
   const openReset = (id: number | null) => {
@@ -429,161 +441,134 @@ function Users() {
             <tbody className="divide-y divide-slate-900/[0.07]">
               {visibleUsers.map((target) => (
                 <Fragment key={target.id}>
-                  <tr
-                    className="transition hover:bg-white/70 group"
-                  >
-                  <td className="px-5 py-4 sm:px-6">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="glass-chip h-10 w-10 shrink-0 border-white/70 bg-white/65 text-indigo-600"
-                      >
-                        <User size={18} />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-800">
-                          {target.username}
-                        </p>
-                        {target.id === currentUserId && (
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            Akun Anda
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-5 py-4 sm:px-6">
-                    <span
-                      className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                        target.role === "ADMIN"
-                          ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                          : target.role === "STAFF"
-                          ? "bg-blue-100 text-blue-700 border border-blue-200"
-                          : "bg-amber-100 text-amber-700 border border-amber-200"
-                      }`}
-                    >
-                      {roleLabel(target.role)}
-                    </span>
-                  </td>
-
-                  <td className="px-5 py-4 sm:px-6 text-slate-700">
-                    <time dateTime={target.date_joined}>
-                      {new Date(target.date_joined).toLocaleDateString("id-ID", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </time>
-                  </td>
-
-                  <td className="px-5 py-4 sm:px-6 text-slate-700 tabular-nums">
-                    {target.complaints_count}
-                  </td>
-
-                  <td className="px-5 py-4 sm:px-6 text-right">
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault()
-                        handleSaveRole(event, target)
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <label
-                        htmlFor={`user-role-select-${target.id}`}
-                        className="sr-only"
-                      >
-                        Peran untuk {target.username}
-                      </label>
-                      <select
-                        id={`user-role-select-${target.id}`}
-                        value={draftRoles[target.id] ?? target.role}
-                        onChange={(event) =>
-                          setDraftRoles((d) => ({
-                            ...d,
-                            [target.id]: event.target.value,
-                          }))
-                        }
-                        disabled={
-                          savingRole === target.id || isOwnRow(target.id)
-                        }
-                        className="input-base cursor-pointer sm:w-40"
-                      >
-                        {ROLE_OPTIONS.map((option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                            disabled={isOwnRow(target.id)}
-                          >
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-
-                      <button
-                        type="submit"
-                        disabled={
-                          savingRole === target.id || isOwnRow(target.id)
-                        }
-                        className="btn-secondary shrink-0 py-2"
-                      >
-                        {savingRole === target.id ? (
-                          <LoaderCircle size={15} className="animate-spin" />
-                        ) : (
-                          <Save size={15} />
-                        )}
-                        {savingRole === target.id ? "Menyimpan..." : "Simpan"}
-                      </button>
-
-                      {isOwnRow(target.id) && (
+                  <tr className="transition hover:bg-white/70 group">
+                    <td className="px-5 py-4 sm:px-6">
+                      <div className="flex items-center gap-3">
                         <span
-                          className="ml-2 text-xs text-slate-500 whitespace-nowrap"
-                          title="Tidak dapat mengubah peran akun Anda sendiri"
+                          className="glass-chip h-10 w-10 shrink-0 border-white/70 bg-white/65 text-indigo-600"
                         >
-                          Tidak dapat mengubah peran sendiri
+                          <User size={18} />
                         </span>
-                      )}
-                    </form>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">
+                            {target.username}
+                          </p>
+                          {target.id === currentUserId && (
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              Akun Anda
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
 
-                    <button
-                      type="button"
-                      onClick={() => openReset(target.id)}
-                      disabled={resetting === target.id || isOwnRow(target.id)}
-                      className="mt-2 btn-secondary shrink-0 py-2 text-xs"
-                      title={
-                        isOwnRow(target.id)
-                          ? "Tidak dapat mengatur ulang password akun Anda sendiri"
-                          : "Atur ulang password pengguna ini"
-                      }
-                    >
-                      {resetting === target.id ? (
-                        <LoaderCircle size={14} className="animate-spin" />
-                      ) : (
-                        <>
-                          <RefreshCw size={14} />
-                          Atur ulang password
-                        </>
-                      )}
-                    </button>
-                  </td>
-                </tr>
-                {resetOpenId === target.id && (
-                  <tr>
-                    <td colSpan={5}>
-                      <div className="border-t border-slate-900/[0.08] px-5 py-4 sm:px-6">
-                        <ResetPasswordForm
-                      target={target}
-                      resetPassword={resetPassword}
-                      setResetPassword={setResetPassword}
-                      handleResetPassword={handleResetPassword}
-                      resetting={resetting}
-                      openReset={openReset}
-                      resetError={resetError}
-                    />
+                    <td className="px-5 py-4 sm:px-6">
+                      <RoleBadge role={target.role} />
+                    </td>
+
+                    <td className="px-5 py-4 sm:px-6 text-slate-700">
+                      <time dateTime={target.date_joined}>
+                        {new Date(target.date_joined).toLocaleDateString("id-ID", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </time>
+                    </td>
+
+                    <td className="px-5 py-4 sm:px-6 text-slate-700 tabular-nums">
+                      {target.complaints_count}
+                    </td>
+
+                    <td className="px-5 py-4 sm:px-6 text-right">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-2">
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault()
+                            handleSaveRole(event, target)
+                          }}
+                          className="flex items-center gap-2 flex-1 sm:flex-1"
+                        >
+                          <label
+                            htmlFor={`user-role-select-${target.id}`}
+                            className="sr-only"
+                          >
+                            Peran untuk {target.username}
+                          </label>
+                          <select
+                            id={`user-role-select-${target.id}`}
+                            value={draftRoles[target.id] ?? target.role}
+                            onChange={(event) =>
+                              setDraftRoles((d) => ({
+                                ...d,
+                                [target.id]: event.target.value,
+                              }))
+                            }
+                            disabled={
+                              savingRole === target.id || isOwnRow(target.id)
+                            }
+                            className="input-base cursor-pointer sm:w-40 flex-1"
+                          >
+                            {ROLE_OPTIONS.map((option) => (
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={isOwnRow(target.id)}
+                              >
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="submit"
+                            disabled={
+                              savingRole === target.id || isOwnRow(target.id)
+                            }
+                            className="btn-secondary shrink-0 py-2 px-3"
+                          >
+                            {savingRole === target.id ? (
+                              <LoaderCircle size={15} className="animate-spin" />
+                            ) : (
+                              <Save size={15} />
+                            )}
+                            {savingRole === target.id ? "Menyimpan..." : "Simpan"}
+                          </button>
+
+                          {isOwnRow(target.id) && (
+                            <span
+                              className="ml-2 text-xs text-slate-500 whitespace-nowrap"
+                              title="Tidak dapat mengubah peran akun Anda sendiri"
+                            >
+                              Tidak dapat mengubah peran sendiri
+                            </span>
+                          )}
+                        </form>
+
+                        <button
+                          type="button"
+                          onClick={() => openReset(target.id)}
+                          disabled={isResetting || isOwnRow(target.id)}
+                          className="btn-secondary shrink-0 py-2 px-3 text-xs"
+                          title={
+                            isOwnRow(target.id)
+                              ? "Tidak dapat mengatur ulang password akun Anda sendiri"
+                              : "Atur ulang password pengguna ini"
+                          }
+                        >
+                          {resetting === target.id ? (
+                            <LoaderCircle size={14} className="animate-spin" />
+                          ) : (
+                            <>
+                              <RefreshCw size={14} />
+                              Atur ulang password
+                            </>
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>
-                )}
-              </Fragment>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -614,25 +599,15 @@ function Users() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                          target.role === "ADMIN"
-                            ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                            : target.role === "STAFF"
-                            ? "bg-blue-100 text-blue-700 border border-blue-200"
-                            : "bg-amber-100 text-amber-700 border border-amber-200"
-                        }`}
-                      >
-                        {roleLabel(target.role)}
-                      </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                      <RoleBadge role={target.role} />
 
                       <form
                         onSubmit={(event) => {
                           event.preventDefault()
                           handleSaveRole(event, target)
                         }}
-                        className="flex flex-col items-end gap-2"
+                        className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-3 w-full sm:w-auto"
                       >
                         <label
                           htmlFor={`mobile-role-select-${target.id}`}
@@ -670,7 +645,7 @@ function Users() {
                           disabled={
                             savingRole === target.id || isOwnRow(target.id)
                           }
-                          className="btn-secondary shrink-0 py-2 text-xs"
+                          className="btn-secondary shrink-0 py-2 px-3 text-xs"
                         >
                           {savingRole === target.id ? (
                             <LoaderCircle size={14} className="animate-spin" />
@@ -693,8 +668,8 @@ function Users() {
                       <button
                         type="button"
                         onClick={() => openReset(target.id)}
-                        disabled={resetting === target.id || isOwnRow(target.id)}
-                        className="mt-1.5 btn-secondary shrink-0 py-2 text-xs"
+                        disabled={isResetting || isOwnRow(target.id)}
+                        className="mt-2 sm:mt-0 btn-secondary shrink-0 py-2 px-3 text-xs"
                         title={
                           isOwnRow(target.id)
                             ? "Tidak dapat mengatur ulang password akun Anda sendiri"
@@ -710,20 +685,6 @@ function Users() {
                     </div>
                   </div>
                 </div>
-
-                {resetOpenId === target.id && (
-                  <div className="border-t border-slate-900/[0.08] px-5 py-4 sm:px-6">
-                    <ResetPasswordForm
-                      target={target}
-                      resetPassword={resetPassword}
-                      setResetPassword={setResetPassword}
-                      handleResetPassword={handleResetPassword}
-                      resetting={resetting}
-                      openReset={openReset}
-                      resetError={resetError}
-                    />
-                  </div>
-                )}
               </Card>
             ))}
           </div>
@@ -754,6 +715,24 @@ function Users() {
             )
           }
         />
+      )}
+
+      {resetTarget && (
+        <Modal
+          open={true}
+          onClose={() => openReset(null)}
+          title={`Atur ulang password - ${resetTarget.username}`}
+        >
+          <ResetPasswordForm
+            target={resetTarget}
+            resetPassword={resetPassword}
+            setResetPassword={setResetPassword}
+            onSubmit={handleResetPassword}
+            onClose={() => openReset(null)}
+            resetting={isResetting}
+            resetError={resetError}
+          />
+        </Modal>
       )}
     </div>
   )
