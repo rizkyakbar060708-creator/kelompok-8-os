@@ -756,6 +756,7 @@ item terlihat setengah kosong.
 | Dashboard (`/admin`) | tidak | tidak | ya |
 | Kelola Fasilitas (`/admin/facilities`) | tidak | tidak | ya |
 | Statistik (`/admin/reports`) | tidak | tidak | ya |
+| Kelola Pengguna (`/admin/users`) | tidak | tidak | ya |
 
 Tiga aturan yang tidak boleh dilanggar:
 
@@ -1000,6 +1001,40 @@ Aturan:
 ```
 
 > Perhatikan: ini **gaya spinner keempat** yang berbeda dari tiga lainnya (§13.2).
+
+### 8.8 Pola halaman Kelola Pengguna (`/admin/users`)
+
+Halaman ini khusus role `ADMIN` (guard `ProtectedRoute allowedRoles={[ADMIN]}` di
+`AppRoutes`, serta filter menu di `DashboardLayout`). Polanya:
+
+```
+.mx-auto max-w-7xl space-y-6
+├── header  eyebrow "Administrasi" + page-title "Kelola Pengguna" + subtitle
+│           + tombol aksi "Atur Ulang Password" (kanan)
+├── alert-error / alert-success (jika ada)
+├── filter bar  .glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row
+│   ├── input pencarian username (aria-label, ikon Search, py-2.5 pl-10)
+│   └── select filter peran (aria-label, cursor-pointer, opsi Mahasiswa/Petugas/Administrator)
+└── konten: spinner → EmptyState → daftar pengguna
+```
+
+Daftar ditampilkan sebagai **tabel di desktop** dan **kartu bertumpuk di mobile** (`hidden lg:block` / `lg:hidden`). Setiap baris berisi:
+
+- Nama pengguna + keterangan "Akun Anda" pada baris milik pengguna yang login.
+- Peran sebagai pill berwarna (Mahasiswa=amber, Petugas=blue, Administrator=indigo).
+- Tanggal bergabung + jumlah pengaduan.
+- Select peran dengan `<label htmlFor>` (disembunyikan visually via `sr-only`) +
+  tombol "Simpan" per baris. Select dan tombol dinonaktifkan pada baris akun
+  sendiri dengan keterangan "Tidak dapat mengubah peran sendiri".
+- Tombol "Atur Ulang Password" yang membuka form inline di bawah baris: input
+  `type="password"` berlabel, tombol "Atur Ulang Password" / "Batal", loading
+  spinner di tombol, error dari backend lewat `errorMessage.ts`. Pesan sukses
+  `"Password <username> berhasil diatur ulang. Sampaikan password baru lewat jalur yang aman."`
+  hanya tampil setelah respons 204 benar-benar sukses.
+
+State yang wajib ada: loading (spinner + teks), kosong (EmptyState), error
+(`role="alert"` + `aria-live="polite"`), sukses (notice banner). Semua tombol
+yang memicu request punya `disabled` selama loading.
 
 ---
 

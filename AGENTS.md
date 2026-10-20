@@ -164,6 +164,26 @@ manual lewat `/admin/`).
   dijaga; kalau tidak, guard dievaluasi ulang dan terjadi infinite redirect loop.
   Jangan diubah tanpa paham alasannya.
 
+## Peta endpoint manajemen pengguna (khusus ADMIN)
+
+| Method | URL | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/api/users/` | ADMIN | Daftar semua pengguna, diurutkan username. `complaints_count` dari `annotate(Count("complaints"))`. Tanpa password. |
+| PATCH | `/api/users/<id>/` | ADMIN | Hanya mengubah `role`. Admin tidak boleh mengubah role akun sendiri (400, Bahasa Indonesia). |
+| POST | `/api/users/<id>/password/` | ADMIN | Atur ulang password pengguna lain. Body `{"password": "..."}` divalidasi lewat `django.contrib.auth.password_validation.validate_password(password, user=target)`. Simpan lewat `set_password`. Semua refresh token target masuk blacklist. Respons 204 tanpa body. Password tidak pernah dikembalikan, disimpan, atau ditampilkan dalam bentuk apa pun. |
+
+Gotcha otorisasi:
+
+- `/api/users/` khusus **ADMIN** untuk semua method (termasuk GET). Jangan gunakan
+  `IsAdminOrReadOnly` karena itu membuka read untuk semua role.
+- Admin **tidak boleh mengubah role akun miliknya sendiri** (400, pesan Bahasa
+  Indonesia). Aturan ini sendiri sudah menjamin minimal satu admin tersisa, jadi
+  tidak perlu guard "admin terakhir".
+- Password disimpan sebagai hash oleh Django (`set_password`). API dan UI tidak
+  pernah menyimpan, mengembalikan, atau menampilkan password dalam bentuk apa pun.
+  Reset password oleh admin mencabut semua refresh token milik target agar sesi
+  lama tidak dapat digunakan lagi.
+
 ## TODO yang sengaja ditunda
 
 Belum dikerjakan, sengaja dikecualikan dari perbaikan sekarang:

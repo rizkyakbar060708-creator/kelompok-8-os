@@ -41,7 +41,9 @@ CampusCare adalah aplikasi pengaduan fasilitas kampus dengan dua actor utama:
 
 - **Mahasiswa** — melihat fasilitas, mengirim pengaduan, memantau status pengaduannya.
 - **Pengelola / Staff** — menangani pengaduan yang masuk dan memperbarui statusnya.
-- **Administrator** — memantau seluruh pengaduan dari semua pengguna lewat dashboard khusus.
+- **Administrator** — memantau seluruh pengaduan dari semua pengguna lewat dashboard khusus
+  dan mengelola pengguna (daftar, ubah peran, atur ulang password) lewat halaman
+  **Kelola Pengguna**.
 
 Data inti yang dimodelkan:
 
@@ -82,6 +84,8 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 - CRUD lengkap untuk **pengaduan**: list, create, retrieve, update, delete.
 - Otorisasi berbasis role pada pengaduan dan fasilitas, ditegakkan di queryset,
   view, dan serializer.
+- Manajemen pengguna khusus admin: daftar semua pengguna, ubah peran, dan atur ulang
+  password (`/api/users/`, khusus `ADMIN`).
 - Django admin (`/admin/`) untuk mengelola data secara manual.
 
 ### Yang sudah tersedia di frontend
@@ -99,6 +103,9 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 - Halaman **Detail Pengaduan** dengan panel **Tindak lanjut** (ubah status dan prioritas)
   khusus staf dan admin, nama pelapor khusus admin, serta tombol hapus sesuai hak role.
 - Halaman **Profil** yang menampilkan data user dari AuthContext.
+- Halaman **Kelola Pengguna** khusus role `ADMIN`: daftar semua pengguna dengan
+  pencarian dan filter peran, ubah peran lewat select per baris, dan atur ulang
+  password pengguna lain.
 - Halaman **403 Forbidden** dan **404 Not Found**.
 - Design system liquid glass (`glass-panel`, `glass-card`, `glass-chip`, `brand-mark`).
 
@@ -254,6 +261,7 @@ menulis `user.role == "..."` langsung di tempat lain.
 | Lihat nama pelapor | tidak | tidak | ya |
 | Kelola fasilitas (tambah/edit/hapus) | tidak | tidak | ya |
 | Akses `/admin` | tidak | tidak | ya |
+| Kelola pengguna (daftar, ubah peran, reset password) | tidak | tidak | ya |
 
 Catatan penting:
 
@@ -311,13 +319,22 @@ pip install -r requirements.txt
 # Migrasi database
 python manage.py migrate
 
+# Buat akun superuser (otomatis Role = Admin)
+python manage.py createsuperuser
+
+# Isi data master fasilitas lewat Django admin di http://127.0.0.1:8000/admin/
+# sebelum pengaduan dapat dibuat.
+
 # Jalankan server
 python manage.py runserver
 ```
 
 Backend berjalan di `http://127.0.0.1:8000`.
 
-> `db.sqlite3` sudah disertakan, jadi `migrate` umumnya tidak mengubah apa pun.
+> `db.sqlite3` **tidak di-track** oleh git (tercantum di `.gitignore`), sehingga
+> clone baru dimulai dari database kosong. Wajib menjalankan `migrate`,
+> `createsuperuser`, dan mengisi fasilitas lewat `/admin/` sebelum aplikasi
+> digunakan.
 
 ### 8.2 Frontend
 
@@ -335,6 +352,11 @@ Frontend berjalan di `http://localhost:5173` (port default Vite).
 
 > Port `5173` **harus** dipakai tanpa diubah, karena backend hanya mengizinkan CORS
 > dari `http://localhost:5173`. Port lain akan menyebabkan request diblokir.
+>
+> File `frontend/.env` **tidak** di-commit. Buat manual sebelum menjalankan:
+> ```env
+> VITE_API_URL="http://127.0.0.1:8000/api"
+> ```
 
 ### 8.3 Perintah frontend lain
 
@@ -344,26 +366,33 @@ npm run preview   # Pratinjau hasil build
 npm run lint      # ESLint
 ```
 
-### 8.4 Membuat akun admin dan staf
+### 8.4 Mengubah peran dan mengatur ulang password pengguna
 
-```bash
-cd backend
-python manage.py createsuperuser
-```
+Akun yang terdaftar lewat halaman `/register` selalu mendapat **Role = STUDENT**.
 
-Diperlukan untuk mengakses dashboard admin di `http://127.0.0.1:8000/admin/`.
-Akun dari `createsuperuser` otomatis mendapat **Role = Admin**, jadi tidak perlu
-diubah manual lagi.
+Untuk mengubah peran pengguna menjadi `STAFF` atau `ADMIN`, atau mengatur ulang
+passwordnya, gunakan halaman **Kelola Pengguna** (`/admin/users`) di frontend, yang
+hanya tersedia untuk role `ADMIN`. Dari sana admin dapat:
+
+- Lihat semua pengguna dengan jumlah pengaduan masing-masing.
+- Ubah peran pengguna lain lewat select per baris (admin tidak dapat mengubah
+  peran akunnya sendiri).
+- Atur ulang password pengguna lain. Password baru disampaikan ke pengguna lewat
+  jalur aman; admin tidak pernah melihat password lama atau hashnya.
+
+Lewat Django admin (`/admin/`) tetap bisa sebagai alternatif: masuk dengan akun
+superuser, buka **Auth → Users**, pilih user, ubah kolom **Role**, lalu simpan.
+Untuk reset password lewat Django admin, gunakan tombol "Set password" pada halaman
+edit user.
 
 Untuk akun **STAFF** atau **ADMIN** yang biasa (tanpa hak Django admin):
 
 1. Daftar seperti biasa lewat halaman `/register` — hasilnya selalu `STUDENT`.
-2. Masuk ke Django admin `http://127.0.0.1:8000/admin/` dengan akun superuser.
-3. Buka **Auth → Users**, pilih user yang mau diubah, lalu ubah kolom **Role** ke
-   `Staff` atau `Admin`, lalu simpan.
+2. Ubah kolom **Role** lewat halaman **Kelola Pengguna** di frontend, atau lewat
+   Django admin `http://127.0.0.1:8000/admin/` → **Auth → Users**.
 
-Tidak ada endpoint API untuk mengubah role, jadi lewat Django admin satu-satunya
-jalurnya.
+Akun `createsuperuser` otomatis mendapat **Role = Admin**, jadi tidak perlu
+diubah manual lagi.
 
 ---
 
@@ -446,6 +475,7 @@ Integrasi frontend ↔ backend berjalan **bertahap**. Berikut kondisi nyata saat
 | Hapus pengaduan | **Ya** | `DELETE /api/complaints/{id}/` |
 | Buat Pengaduan | **Ya** | `POST /api/complaints/` (`multipart/form-data`, opsional foto) |
 | Profil | **Ya** | Lewat AuthContext |
+| Manajemen Pengguna | **Ya** | `GET /api/users/`, `PATCH /api/users/{id}/`, `POST /api/users/{id}/password/` (khusus ADMIN) |
 
 ### Catatan tentang data dashboard
 
