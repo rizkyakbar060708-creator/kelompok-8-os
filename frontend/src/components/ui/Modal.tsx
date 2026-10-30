@@ -7,6 +7,7 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   closeLabel?: string
+  footer?: React.ReactNode
 }
 
 function Modal({
@@ -15,6 +16,7 @@ function Modal({
   title,
   children,
   closeLabel = "Tutup dialog",
+  footer,
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
 
@@ -94,7 +96,7 @@ function Modal({
         aria-labelledby="modal-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <h2
             id="modal-title"
             className="text-base font-semibold tracking-tight text-slate-900"
@@ -111,7 +113,15 @@ function Modal({
           </button>
         </div>
 
-        <div className="mt-4 space-y-3">{children}</div>
+        <div className="space-y-4">{children}</div>
+
+        {footer && (
+          <div
+            className="mt-6 pt-4 border-t border-slate-900/[0.06] flex flex-col sm:flex-row sm:items-end gap-3"
+          >
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

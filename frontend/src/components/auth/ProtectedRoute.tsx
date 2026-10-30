@@ -3,10 +3,13 @@ import type { ReactNode } from "react";
 
 import { ACCESS_TOKEN } from "../../constant";
 import { useAuth } from "../../contexts/AuthContext";
+import type { Role } from "../../utils/roles";
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  allowedRoles?: string[];
+  // Typenya Role, bukan string, supaya salah ketik di allowedRoles langsung
+  // ketahuan oleh tsc dan bukan hanya diam-diam tidak cocok saat runtime.
+  allowedRoles?: readonly Role[];
 }
 
 function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {

@@ -255,9 +255,8 @@ Tidak ada `text-*` kustom selain `.page-title` dan `.eyebrow`; sisanya utilitas 
 | Kategori di card | `text-xs font-semibold uppercase tracking-[0.12em]` | 0.75rem | 600 | `0.12em` | default | `indigo-600` |
 
 > **Catatan inkonsistensi:** label uppercase inline memakai `tracking-[0.12em]`
-> (ComplaintCard, Profile) sementara `.eyebrow` memakai `0.16em` dan
-> "Workspace" di sidebar `0.18em`. Ketiganya menjalankan fungsi yang sama.
-> Lihat §14.2.
+> (ComplaintCard, Profile) sementara `.eyebrow` memakai `0.16em`.
+> Keduanya menjalankan fungsi yang sama. Lihat §14.2.
 
 ### 3.3 Aturan hierarchy
 
@@ -267,7 +266,7 @@ Tidak ada `text-*` kustom selain `.page-title` dan `.eyebrow`; sisanya utilitas 
    `page-subtitle`. Pengecualiannya `ComplaintDetail`, yang memang tidak memakai
    subtitle.
 3. **Tracking-tight hanya pada heading**, tidak pernah pada body.
-4. **Huruf kapital hanya untuk metadata**: eyebrow, label Workspace, kategori di card.
+4. **Huruf kapital hanya untuk metadata**: eyebrow, kategori di card.
 5. **Label form tidak pernah pakai placeholder sebagai label** — selalu ada
    `<label htmlFor>`.
 
@@ -437,7 +436,7 @@ Semua kelas `.glass-panel`, `.glass-card`, `.glass-panel-dark`, `.glass-sidebar`
 | `.glass-sidebar` | `rgba(255,255,255,.55)` | `rgba(255,255,255,.62)` | `blur(30px) saturate(190%)` | Linear 176° tipis `0.45→0.10@26%→0@52%` + `::after` hairline 1px di tepi kanan | Sidebar app |
 | `.glass-nav` | bawah `rgba(255,255,255,.60)` | `rgba(255,255,255,.55)` | `blur(28px) saturate(190%)` | Linear 180° `0.6→0@62%` | Topbar |
 | `.glass-chip` | `rgba(255,255,255,.68)` | `rgba(255,255,255,.60)` | `blur(14px) saturate(170%)` | — (hanya inset) | Chip ikon |
-| `.glass-pill` | `rgba(255,255,255,.60)` | (di-*override* utility) | `blur(14px) saturate(170%)` | — | Pill role di Profile |
+| `.glass-pill` | `rgba(255,255,255,.60)` | (di-*override* utility) | `blur(14px) saturate(170%)` | — | Pill role di Profile, pil Prioritas + "Diperbarui" di ComplaintDetail |
 | `.glass-well` | dashed `rgba(100,116,139,.38)` | `rgba(255,255,255,.45)` | `blur(12px)` (tanpa saturate) | — | Dropzone upload foto |
 
 > **Catatan opacity (penting).** `.glass-sidebar` sengaja lebih *rendah* dari
@@ -537,6 +536,7 @@ menyesuaikan latar.
 | `components/ui/Card.tsx` | Komponen | Glass card wrapper |
 | `components/ui/StatusBadge.tsx` | Komponen | Pill status 4 nilai |
 | `components/ui/EmptyState.tsx` | Komponen | Panel kosong + aksi |
+| `components/ui/Modal.tsx` | Komponen | Dialog shared: overlay jelas, latar solid, max-w 448px, focus trap, Escape, klik luar |
 | `components/complaint/ComplaintCard.tsx` | Komponen | Kartu pengaduan di daftar |
 | `components/auth/ProtectedRoute.tsx` | Komponen | Route guard + loading screen |
 | `components/auth/DashboardRedirector.tsx` | Komponen | Pilih dashboard per role |
@@ -555,9 +555,10 @@ menyesuaikan latar.
 | `Badge` generik | **Tidak ada.** Hanya `StatusBadge` | `StatusBadge` khusus status; `.glass-pill` + tone adalah jalan untuk badge lain |
 | `Modal` / `Dialog` | **Tidak ada sama sekali** | Lihat §14.5 |
 | `Toast` / `Snackbar` | **Tidak ada sama sekali** | Lihat §14.5 |
-| `Spinner` / `Skeleton` | **Tidak ada.** 4 spinner & 1 pola skeleton ditulis inline | Ekstrak agar konsisten |
+| `Spinner` / `Skeleton` | **Ada `Spinner`.** `components/ui/Spinner.tsx` (cincin, `size`, `className`). Skeleton masih inline | Skeleton masih pola `animate-pulse` inline; konsolidasikan nanti |
 | `Table` | **Tidak ada.** Yang dipakai adalah baris list di dalam `Card` | — |
-| Tipe `Status` bersama | **Tidak ada.** Tipe `Status` dideklarasikan ulang di `StatusBadge.tsx` dan `ComplaintCard.tsx` | Ekspor satu dari `services/complaintService.ts` |
+| Chart | **Tidak ada komponen generic.** Hanya `StatusDonut` (SVG) dan `TrendBars` (flex/CSS) di `components/charts/`, keduanya tanpa dependensi chart | Jangan tambahkan library chart; kebutuhan saat ini terpenuhi dua komponen ini |
+| Tipe `Status` bersama | **Ada.** `utils/statusConfig.ts` mengekspor `ComplaintStatus`, `COMPLAINT_STATUSES`, `STATUS_CONFIG`, `statusLabel`, `StatusSlice` | Badge, chart, dan label status wajib mengambil dari sini |
 
 ### 7.3 `Card` (`components/ui/Card.tsx`)
 
@@ -613,10 +614,14 @@ article.glass-card.glass-card-hover.group.rounded-2xl.p-5
 │   └── kanan: <StatusBadge>
 ├── meta    mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-600
 │   ├── <MapPin size={16} class="text-slate-500"/> lokasi
-│   └── <Calendar size={16} class="text-slate-500"/> tanggal
+│   ├── <Calendar size={16} class="text-slate-500"/> tanggal
+│   └── <User size={16} class="text-slate-500"/> pelapor (opsional, hanya bila ada nilainya)
 └── footer  mt-5 border-t border-slate-900/8 pt-4
     └── Link justify-end text-sm font-semibold text-indigo-600 + ChevronRight
 ```
+
+Props: `id`, `title`, `category`, `location`, `date`, `status`, dan opsional
+`reporter?: string | null`.
 
 - Chevron bergeser `translate-x-0.5` saat card di-hover.
 - Ikon meta selalu `size={16}` dengan warna `text-slate-500`.
@@ -732,12 +737,49 @@ Dashboard, AdminDashboard).
 | Item sidebar (aktif) | `.nav-link-active .nav-link-accent` |
 | Bar aksen aktif | `::before` 3px × 1.25rem, `#6366f1`, radius penuh, glow, tengah vertikal |
 | Ikon nav | `size={18}` |
-| Grup label | gaya `.nav-link`: `text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 px-3 mb-3` |
 | Hover | bg putih `.45`, geser `translateX(2px)` |
 | Tombol logout (sidebar) | native: `rounded-xl px-2.5 py-2 text-sm text-slate-600 hover:bg-white/80 hover:text-slate-900` |
 | Avatar link (topbar) | native: `rounded-xl border border-white/70 bg-white/55 p-1.5 hover:bg-white/80` + `shadow-[inset_0_1px_0_0_rgba(255,255,255,.85)]` |
 
 > `.nav-link:focus-visible` memakai `outline: 2px solid #6366f1; outline-offset: 2px`.
+
+**Isi menu ditentukan role, dalam satu daftar datar.** `navItems` di
+`DashboardLayout` mempunyai `roles: readonly Role[]` per item dan di-filter dengan
+`item.roles.includes(user.role)`. Tidak ada judul grup: label pemisah tidak
+menambah informasi apa pun dan membuat sidebar untuk role dengan satu atau dua
+item terlihat setengah kosong.
+
+| Item | STUDENT | STAFF | ADMIN |
+| --- | --- | --- | --- |
+| Dashboard (`/dashboard`) | ya | tidak | tidak |
+| Pengaduan (`/complaints`) | ya | ya | ya |
+| Profil (`/profile`) | ya | ya | ya |
+| Dashboard (`/admin`) | tidak | tidak | ya |
+| Kelola Fasilitas (`/admin/facilities`) | tidak | tidak | ya |
+| Statistik (`/admin/reports`) | tidak | tidak | ya |
+| Kelola Pengguna (`/admin/users`) | tidak | tidak | ya |
+
+Tiga aturan yang tidak boleh dilanggar:
+
+1. **Item "Dashboard" pertama hanya untuk STUDENT.** `/dashboard`
+   dialihkan ke `/admin` untuk admin dan ke `/complaints` untuk staf, jadi
+   memberi mereka tautan itu hanya menghasilkan tautan yang berbalik ke halaman
+   lain begitu diklik.
+2. **Route `/admin` memakai `end: true`.** Tanpa itu `NavLink` ikut menyala
+   saat pengguna berada di `/admin/reports` atau `/admin/facilities`, sehingga
+   dua item admin terlihat aktif bersamaan.
+3. **Filter menu bukan otorisasi.** Setiap route admin tetap dijaga
+   `ProtectedRoute allowedRoles={[ADMIN]}` di `AppRoutes`. Menyembunyikan
+   tautan cuma kosmetik.
+
+Dua item bernama "Dashboard" ada di `navItems`, tapi tidak pernah berdampingan:
+`/dashboard` hanya untuk STUDENT dan `/admin` hanya untuk ADMIN. Stef tidak
+melihat keduanya. Jangan menyamakan nama keduanya tanpa mengecek ulang aturan
+filter di atas.
+
+Role didefinisikan sekali di `utils/roles.ts` (`Role`, `isAdmin`, `isManager`,
+`roleLabel`), cermin `apps/accounts/permissions.py` di backend. Jangan menulis
+perbandingan `role === "ADMIN"` langsung di halaman.
 
 ### 7.11 Brand mark
 
@@ -845,6 +887,11 @@ Aturan:
 - **Kartu selalu 2 kolom di `lg` ke atas** (`grid gap-4 lg:grid-cols-2`).
 - Baris `Prioritas {priority}` pada kartu menerima **nilai enum mentah** dari API
   (mis. "Prioritas HIGH"), bukan label Indonesia. Lihat §9.2.
+- Meta kartu tambahan (ikon `User` + username pelapor) dirender hanya bila
+  `complaint.reporter_username` truthy, jadi bagi role lain tidak ada elemen kosong
+  yang tersisa di baris meta.
+- **Tombol "Buat Pengaduan"** di header disembunyikan untuk `STAFF` dan subtitle
+  diganti, karena halaman itu adalah antrean tidy-up mereka, bukan halaman melapor.
 
 ### 8.4 Pola form (`CreateComplaint`)
 
@@ -892,9 +939,13 @@ Aturan yang berlaku:
 └── konten:
     ├── <Card> judul + meta (MapPin, Calendar) + StatusBadge, dengan orb indigo
     ├── <Card> foto (hanya bila complaint.image truthy), img rounded-2xl object-cover
-    ├── <Card> chip Prioritas (indigo tone) + chip "Diperbarui …" (slate tone)
+    ├── <Card> pil Prioritas + pil "Diperbarui …" (keduanya .glass-pill)
     │         lalu sub-section "Deskripsi" text-sm leading-7 whitespace-pre-line
-    └── baris aksi  flex flex-col-reverse gap-3 sm:flex-row sm:justify-end
+    ├── <Card> kartu "Pelapor" — HANYA untuk ADMIN, dengan orb indigo
+    ├── <Card> "Tindak lanjut" — HANYA untuk STAFF/ADMIN, dengan orb violet
+    ├── baris aksi  flex flex-col-reverse gap-3 sm:flex-row sm:justify-end
+    │         [Hapus pengaduan (danger, sm:mr-auto)] [Kembali ke Daftar]
+    └── alert-error (satu panel, dipakai bersama oleh Simpan dan Hapus)
 ```
 
 Aturan:
@@ -908,6 +959,25 @@ Aturan:
   tanpa tombol reload; error lain → panel error dengan tombol "Muat ulang halaman".
   Keduanya `role="alert"` dan memakai `glass-panel rounded-2xl` (bukan `rounded-3xl`
   seperti `EmptyState`).
+- **Baris meta header hanya lokasi + tanggal.** Identitas pelapor tidak lagi
+  diselipkan sebagai `<span>` telanjang di sana — dulu ia tenggelam di antara ikon
+  meta dan sulit dibaca. Sekarang jadi kartu info sendiri dengan pola yang sama
+  persis dengan kartu detail `Profile` (§8.6): `glass-chip h-11 w-11` ikon
+  `User size={19}` + label uppercase tracking-`0.12em` + username `truncate`.
+  Backend hanya mengisi `reporter_username` untuk `ADMIN`, jadi kartu ini
+  otomatis hilang untuk mahasiswa dan staf.
+- **Panel "Tindak lanjut"** memakai `select .input-base cursor-pointer` untuk status dan
+  prioritas, `grid gap-4 sm:grid-cols-2`, serta `btn-primary` "Simpan Perubahan" yang
+  ganti jadi spinner + "Menyimpan..." saat `disabled`. Label memakai `htmlFor` +
+  `text-xs font-semibold uppercase tracking-[0.12em] text-slate-500`.
+- **Tombol "Hapus pengaduan"** memakai `btn-secondary` + override merah ad-hoc (pola yang
+  sama dengan tombol keluar di `Profile`, §8.6) plus `sm:mr-auto` supaya mendarat di kiri
+  baris aksi. Konfirmasi memakai `window.confirm` native karena repo belum punya `Modal`
+  (§7.2). Setelah berhasil, navigasi ke `/complaints`.
+- **Satu `alert-error` untuk kedua aksi**, diletakkan setelah baris aksi supaya tetap
+  tampil untuk role yang tidak punya panel tindak lanjut.
+- Penutupan tombol mengikuti hak role: admin selalu, mahasiswa hanya miliknya yang masih
+  `PENDING`. Staf tidak pernah melihat tombol ini.
 
 ### 8.6 Pola profil (`Profile`)
 
@@ -933,6 +1003,60 @@ Aturan:
 
 > Perhatikan: ini **gaya spinner keempat** yang berbeda dari tiga lainnya (§13.2).
 
+### 8.8 Pola halaman Kelola Pengguna (`/admin/users`)
+
+Halaman ini khusus role `ADMIN` (guard `ProtectedRoute allowedRoles={[ADMIN]}` di
+`AppRoutes`, serta filter menu di `DashboardLayout`). Polanya:
+
+```
+.mx-auto max-w-7xl space-y-6
+├── header  eyebrow "Administrasi" + page-title "Kelola Pengguna" + subtitle
+│           + tombol aksi "Atur Ulang Password" (kanan)
+├── alert-error / alert-success (jika ada)
+├── filter bar  .glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row
+│   ├── input pencarian username (aria-label, ikon Search, py-2.5 pl-10)
+│   └── select filter peran (aria-label, cursor-pointer, opsi Mahasiswa/Petugas/Administrator)
+└── konten: spinner → EmptyState → tabel pengguna
+```
+
+Tabel pengguna ditampilkan di **seluruh breakpoint** (tidak dibedakan desktop/mobile)
+untuk kesederhanaan dan keterbacaan. Setiap baris berisi:
+
+- Nama pengguna (username) + keterangan "Akun Anda" pada baris milik pengguna yang login.
+- Peran sebagai pill `glass-pill` sederhana (Mahasiswa=amber, Petugas=blue, Administrator=indigo).
+- Tanggal bergabung + jumlah pengaduan.
+- **Satu tombol menu aksi `⋯` (`EllipsisVertical`) di kolom kanan.** Ketika ditekan,
+  dropdown muncul di sebelah kanan tombol berisi dua opsi:
+  - "Ubah role" → membuka **Modal** dengan username, role saat ini, select role baru,
+    dan tombol Simpan/Batal. Admin tidak boleh mengubah role akun sendiri.
+  - "Ganti password" → membuka **Modal** dengan username target, input password baru,
+    toggle tampil/sembunyikan, petunjuk minimal 8 karakter, dan tombol Atur Ulang
+    Password/Batal.
+
+Dropdown ditutup saat klik di luar atau menekan Escape. Tidak ada beberapa tombol
+aksi sekaligus di setiap baris.
+
+**Modal** (`components/ui/Modal.tsx`) adalah komponen dialog shared:
+- Overlay `fixed inset-0 bg-slate-900/35 backdrop-blur-sm`, z-index di atas seluruh
+  elemen halaman.
+- Konten di tengah layar, `max-w-[448px]`, `max-h-[90vh]`, `overflow-y-auto`,
+  background **solid** (`bg-white`) agar teks mudah dibaca, `rounded-3xl`, `p-6`.
+- Header modal berisi judul spesifik + tombol tutup (`X`) dengan `aria-label`.
+- Footer modal berisi tombol Batal (sekunder, `btn-secondary`) dan Simpan (utama,
+  `btn-primary`) dengan tinggi, ukuran, dan alignment konsisten.
+- `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap (Tab), Escape
+  untuk menutup, dan klik di luar overlay untuk menutup.
+- Saat request berlangsung, tombol Simpan disabled + loader, dan modal **tidak**
+  ditutup sebelum request selesai.
+
+State yang wajib ada: loading (spinner + teks), kosong (`EmptyState`), error
+(`role="alert"` + `aria-live="polite"`), sukses (notice banner). Semua tombol yang
+memicu request punya `disabled` selama loading.
+
+Responsivitas: tombol aksi utama `w-full sm:w-auto`, tabel tidak menimbulkan scroll
+horizontal, dropdown tidak terpotong oleh container tabel, dan modal menurun ke
+lebar penuh pada layar kecil dengan padding `1rem` di sisi overlay.
+
 ---
 
 ## 9. Status Pengaduan & Pemetaan Tampilannya
@@ -956,19 +1080,28 @@ konteks metrik).
 
 ### 9.2 Prioritas
 
-Sumber: `ComplaintDetail.tsx:22-26`.
+Sumber: `ComplaintDetail.tsx`.
 
-| Enum | Label Indonesia | Tampilan saat ini |
+| Enum | Label Indonesia | Warna pil |
 | --- | --- | --- |
-| `LOW` | Rendah | Chip indigo (`glass-chip h-9 … border-indigo-200 bg-indigo-50/90 px-3 text-xs font-semibold text-indigo-700`) berisi ikon `ClipboardList size={14}` + teks |
-| `MEDIUM` | Sedang | idem |
-| `HIGH` | Tinggi | idem |
+| `LOW` | Rendah | slate — `border-slate-200 bg-white/70 text-slate-600` |
+| `MEDIUM` | Sedang | amber — `border-amber-200 bg-amber-50/90 text-amber-700` |
+| `HIGH` | Tinggi | indigo — `border-indigo-200 bg-indigo-50/90 text-indigo-700` |
 
-> **Ketidaksesuaian yang harus diketahui:** di `ComplaintDetail` label Indonesia
-> dipakai dengan benar, tapi di `Complaints.tsx:151` baris kategori kartu diisi
-> `` `Prioritas ${complaint.priority}` `` — jadi pengguna melihat literal
-> **"Prioritas HIGH"**, bukan "Prioritas Tinggi". Perbaiki dengan memakai map yang
-> sama seperti di `ComplaintDetail`.
+Gaya pil: `glass-pill gap-1.5 px-3 py-1.5 text-xs font-semibold` + ikon
+`ClipboardList size={13}`.
+
+> **Perbaikan dari sebelumnya:** dulu prioritas memakai `.glass-chip` yang
+> resepnya `display: grid` + `place-items: center` + radius `0.85rem` — dipakai
+> untuk **ikon tunggal** dalam kotak persegi. Dipaksa jadi baris ikon + teks,
+> grid menyusun keduanya vertikal di dalam `h-9`, jadi kelihatan rusak.
+> `.glass-pill` (`inline-flex` + `rounded-full`) memang sejak awal resep untuk
+> badge; sekarang dipakai di sini dan di pil role `Profile`.
+
+> **Ketidaksesuaian lain yang masih ada:** di `Complaints.tsx` baris kategori
+> kartu diisi `` `Prioritas ${complaint.priority}` `` — jadi pengguna melihat
+> literal **"Prioritas HIGH"**, bukan "Prioritas Tinggi". Perbaiki dengan memakai
+> map yang sama seperti di `ComplaintDetail`.
 
 ### 9.3 Di mana status tampil
 
@@ -1290,8 +1423,9 @@ Tidak ada toast, snackbar, banner sukses, atau animasi konfirmasi di repo.
 
 ### 14.1 Badge dan pill
 
-- **Kondisi sekarang:** `.glass-pill` ada dan satu kali dipakai (role di Profile);
-  `StatusBadge` masih datar/rata.
+- **Kondisi sekarang:** `.glass-pill` dipakai di role `Profile` dan di pil
+  Prioritas + "Diperbarui" `ComplaintDetail` (§9.2); `StatusBadge` masih
+  datar/rata.
 - **Rekomendasi:** jadikan `.glass-pill` sebagai satu-satunya badge, dengan tone
   border/bg/teks mengikuti pola chip yang sudah ada
   (`border-*-200 bg-*-50/90 text-*-700`). Pertahankan label teks — jangan pernah

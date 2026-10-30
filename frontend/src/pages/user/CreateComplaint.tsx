@@ -115,7 +115,7 @@ function CreateComplaint() {
         const data = await getFacilities()
 
         if (active) {
-          setFacilities(data)
+          setFacilities(data.items)
         }
       } catch {
         if (active) {
