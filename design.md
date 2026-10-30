@@ -536,6 +536,7 @@ menyesuaikan latar.
 | `components/ui/Card.tsx` | Komponen | Glass card wrapper |
 | `components/ui/StatusBadge.tsx` | Komponen | Pill status 4 nilai |
 | `components/ui/EmptyState.tsx` | Komponen | Panel kosong + aksi |
+| `components/ui/Modal.tsx` | Komponen | Dialog shared: overlay jelas, latar solid, max-w 448px, focus trap, Escape, klik luar |
 | `components/complaint/ComplaintCard.tsx` | Komponen | Kartu pengaduan di daftar |
 | `components/auth/ProtectedRoute.tsx` | Komponen | Route guard + loading screen |
 | `components/auth/DashboardRedirector.tsx` | Komponen | Pilih dashboard per role |
@@ -1015,26 +1016,46 @@ Halaman ini khusus role `ADMIN` (guard `ProtectedRoute allowedRoles={[ADMIN]}` d
 ├── filter bar  .glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row
 │   ├── input pencarian username (aria-label, ikon Search, py-2.5 pl-10)
 │   └── select filter peran (aria-label, cursor-pointer, opsi Mahasiswa/Petugas/Administrator)
-└── konten: spinner → EmptyState → daftar pengguna
+└── konten: spinner → EmptyState → tabel pengguna
 ```
 
-Daftar ditampilkan sebagai **tabel di desktop** dan **kartu bertumpuk di mobile** (`hidden lg:block` / `lg:hidden`). Setiap baris berisi:
+Tabel pengguna ditampilkan di **seluruh breakpoint** (tidak dibedakan desktop/mobile)
+untuk kesederhanaan dan keterbacaan. Setiap baris berisi:
 
-- Nama pengguna + keterangan "Akun Anda" pada baris milik pengguna yang login.
-- Peran sebagai pill berwarna (Mahasiswa=amber, Petugas=blue, Administrator=indigo).
+- Nama pengguna (username) + keterangan "Akun Anda" pada baris milik pengguna yang login.
+- Peran sebagai pill `glass-pill` sederhana (Mahasiswa=amber, Petugas=blue, Administrator=indigo).
 - Tanggal bergabung + jumlah pengaduan.
-- Select peran dengan `<label htmlFor>` (disembunyikan visually via `sr-only`) +
-  tombol "Simpan" per baris. Select dan tombol dinonaktifkan pada baris akun
-  sendiri dengan keterangan "Tidak dapat mengubah peran sendiri".
-- Tombol "Atur Ulang Password" yang membuka form inline di bawah baris: input
-  `type="password"` berlabel, tombol "Atur Ulang Password" / "Batal", loading
-  spinner di tombol, error dari backend lewat `errorMessage.ts`. Pesan sukses
-  `"Password <username> berhasil diatur ulang. Sampaikan password baru lewat jalur yang aman."`
-  hanya tampil setelah respons 204 benar-benar sukses.
+- **Satu tombol menu aksi `⋯` (`EllipsisVertical`) di kolom kanan.** Ketika ditekan,
+  dropdown muncul di sebelah kanan tombol berisi dua opsi:
+  - "Ubah role" → membuka **Modal** dengan username, role saat ini, select role baru,
+    dan tombol Simpan/Batal. Admin tidak boleh mengubah role akun sendiri.
+  - "Ganti password" → membuka **Modal** dengan username target, input password baru,
+    toggle tampil/sembunyikan, petunjuk minimal 8 karakter, dan tombol Atur Ulang
+    Password/Batal.
 
-State yang wajib ada: loading (spinner + teks), kosong (EmptyState), error
-(`role="alert"` + `aria-live="polite"`), sukses (notice banner). Semua tombol
-yang memicu request punya `disabled` selama loading.
+Dropdown ditutup saat klik di luar atau menekan Escape. Tidak ada beberapa tombol
+aksi sekaligus di setiap baris.
+
+**Modal** (`components/ui/Modal.tsx`) adalah komponen dialog shared:
+- Overlay `fixed inset-0 bg-slate-900/35 backdrop-blur-sm`, z-index di atas seluruh
+  elemen halaman.
+- Konten di tengah layar, `max-w-[448px]`, `max-h-[90vh]`, `overflow-y-auto`,
+  background **solid** (`bg-white`) agar teks mudah dibaca, `rounded-3xl`, `p-6`.
+- Header modal berisi judul spesifik + tombol tutup (`X`) dengan `aria-label`.
+- Footer modal berisi tombol Batal (sekunder, `btn-secondary`) dan Simpan (utama,
+  `btn-primary`) dengan tinggi, ukuran, dan alignment konsisten.
+- `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap (Tab), Escape
+  untuk menutup, dan klik di luar overlay untuk menutup.
+- Saat request berlangsung, tombol Simpan disabled + loader, dan modal **tidak**
+  ditutup sebelum request selesai.
+
+State yang wajib ada: loading (spinner + teks), kosong (`EmptyState`), error
+(`role="alert"` + `aria-live="polite"`), sukses (notice banner). Semua tombol yang
+memicu request punya `disabled` selama loading.
+
+Responsivitas: tombol aksi utama `w-full sm:w-auto`, tabel tidak menimbulkan scroll
+horizontal, dropdown tidak terpotong oleh container tabel, dan modal menurun ke
+lebar penuh pada layar kecil dengan padding `1rem` di sisi overlay.
 
 ---
 

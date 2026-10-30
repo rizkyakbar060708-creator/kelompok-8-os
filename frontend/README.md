@@ -192,7 +192,8 @@ frontend/
     │   │   ├── CreateComplaint.tsx # Form pengaduan (belum submit ke API)
     │   │   └── Profile.tsx         # Profil user (lewat AuthContext)
     │   ├── admin/
-    │   │   └── AdminDashboard.tsx  # Agregat seluruh pengaduan (role ADMIN)
+    │   │   ├── AdminDashboard.tsx  # Agregat seluruh pengaduan (role ADMIN)
+│   │   └── Users.tsx           # Kelola Pengguna: tabel, dropdown aksi, modal role/password (role ADMIN)
     │   ├── Forbidden.tsx    # 403 — role tidak punya akses
     │   └── NotFound.tsx     # 404
     │
@@ -207,19 +208,23 @@ frontend/
     │   │   └── ComplaintCard.tsx
     │   └── ui/
     │       ├── Card.tsx            # Glass card wrapper
-    │       ├── StatusBadge.tsx     # Pill status pengaduan
-    │       └── EmptyState.tsx      # Glass empty state
+    │       ├── EmptyState.tsx      # Glass empty state
+    │       ├── Modal.tsx           # Dialog shared: overlay, latar solid, focus trap, Escape
+    │       └── StatusBadge.tsx     # Pill status pengaduan
     │
     ├── contexts/
     │   └── AuthContext.tsx         # Provider user + isReady + refreshUser
     │
     ├── utils/
-    │   └── complaintStats.ts       # Agregasi, join facility, format tanggal
+    │   ├── complaintStats.ts       # Agregasi, join facility, format tanggal
+    │   ├── errorMessage.ts         # Normalisasi pesan error dari backend
+    │   └── roles.ts                # Konstanta role + helper isAdmin/isManager/roleLabel
     │
     └── services/
         ├── api.ts                  # Axios instance + interceptor request & response
         ├── complaintService.ts     # GET /complaints/
-        └── facilityService.ts      # GET /facilities/
+        ├── facilityService.ts      # GET /facilities/
+        └── userService.ts          # GET/PATCH /users/, POST /users/{id}/password/
 ```
 
 ---
@@ -606,6 +611,12 @@ selesai, ditolak) + daftar terbaru. Hanya dapat diakses role `ADMIN`.
 Agregasi dihitung di client dari list penuh karena `GET /api/complaints/stats/` belum
 tersedia di backend.
 
+### `pages/admin/Users.tsx`
+
+Kelola Pengguna: tabel semua pengguna, pencarian, filter peran, dropdown aksi per
+baris (Ubah role / Ganti password), dan dialog modal. Hanya dapat diakses role
+`ADMIN`.
+
 ### `pages/user/Complaints.tsx`
 
 Daftar pengaduan dengan pencarian (filter judul) dan filter status, ditambah empty
@@ -684,8 +695,9 @@ highlight, dan efek refractif di atas latar navy gelap.
 | `.glass-nav` | Glass untuk navbar |
 | `.glass-pill` | Pill transparan (badge, chip) |
 | `.glass-chip` | Chip persegi untuk ikon |
-| `.glass-well` | Area well untuk dropzone |
-| `.brand-mark` | Blok gradien dengan specular cap |
+| \`.glass-well\` | Area well untuk dropzone |
+| \`.modal\` | Dialog shared: overlay, latar solid, max-w 448px, focus trap, Escape |
+| \`.brand-mark\` | Blok gradien dengan specular cap |
 | `.alert-error` | Alert error kontras tinggi |
 | `.input-base` | Input glass |
 | `.btn-primary` | Tombol utama gradien |
@@ -779,6 +791,7 @@ Endpoint yang **sudah** dipakai frontend:
 | `services/api.ts` | `POST /auth/refresh/` (dijalankan otomatis saat 401) |
 | `services/complaintService.ts` | `GET /complaints/` |
 | `services/facilityService.ts` | `GET /facilities/` |
+| `services/userService.ts` | `GET /users/`, `PATCH /users/{id}/`, `POST /users/{id}/password/` |
 
 Endpoint yang **belum** dipakai, tetapi tersedia di backend dan siap diintegrasikan:
 

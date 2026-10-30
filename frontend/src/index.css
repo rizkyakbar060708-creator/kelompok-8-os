@@ -801,10 +801,17 @@
     position: relative;
     z-index: 61;
     width: 100%;
-    max-width: 24rem;
+    max-width: 448px;
     max-height: 90vh;
     overflow-y: auto;
     outline: none;
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
+    box-shadow:
+      0 28px 60px -32px rgba(49, 46, 129, 0.32),
+      0 10px 24px -18px rgba(49, 46, 129, 0.22);
   }
 }
 
