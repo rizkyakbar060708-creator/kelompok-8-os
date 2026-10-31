@@ -1,10 +1,11 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import DashboardLayout from "../layouts/DashboardLayout";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 
 import Login from "../pages/auth/Login";
 import Register from "../pages/auth/Register";
+import LandingPage from "../pages/public/LandingPage";
 
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import FacilitiesAdmin from "../pages/admin/FacilitiesAdmin";
@@ -28,17 +29,18 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
 
-      {/* Protected */}
-      <Route
-        element={
-          <ProtectedRoute>
-            <DashboardLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Navigate to="/dashboard" replace />} />
+      {/* Public landing page */}
+      <Route path="/" element={<LandingPage />} />
 
-        <Route path="/dashboard" element={<DashboardRedirector />} />
+      {/* Protected */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<DashboardRedirector />} />
 
         {/* Route admin tidak digabung jadi <Route path="/admin"> dengan anak
             <Route index/> + <Route path="..."/> karena bentuk sederhana ini

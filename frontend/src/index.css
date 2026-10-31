@@ -18,6 +18,10 @@
     color-scheme: light;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   * {
     box-sizing: border-box;
   }
@@ -834,5 +838,9 @@
   .btn-secondary:hover,
   .icon-button:hover {
     transform: none;
+  }
+
+  html {
+    scroll-behavior: auto !important;
   }
 }
