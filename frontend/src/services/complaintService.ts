@@ -7,6 +7,12 @@ export interface Complaint {
   reporter_username?: string | null;
   facility: number | null;
   category: "FASILITAS" | "AKADEMIK" | "KEAMANAN";
+  // Laporan lama yang dibuat sebelum fitur ini boleh punya nilai kosong.
+  sub_category: string | null;
+  incident_location: string | null;
+  // ISO timestamp, atau null saat laporan tanpa waktu kejadian.
+  incident_date: string | null;
+  is_anonymous: boolean;
   title: string;
   description: string;
   status: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "REJECTED";
@@ -17,14 +23,26 @@ export interface Complaint {
   updated_at: string;
 }
 
+export interface SubCategoryOption {
+  value: string;
+  label: string;
+}
+
 export interface ComplaintCategory {
   value: string;
   label: string;
+  sub_categories: SubCategoryOption[];
 }
 
 export interface CreateComplaintPayload {
   facility?: number | null;
   category: "FASILITAS" | "AKADEMIK" | "KEAMANAN";
+  // Kosong/null hanya sah untuk FASILITAS; backend mewajibkannya untuk
+  // AKADEMIK dan KEAMANAN.
+  sub_category: string | null;
+  incident_location?: string | null;
+  incident_date?: string | null;
+  is_anonymous: boolean;
   title: string;
   description: string;
   image?: File | null;
@@ -66,6 +84,21 @@ export const createComplaint = async (
     formData.append("facility", String(payload.facility));
   }
   formData.append("category", payload.category);
+
+  if (payload.sub_category) {
+    formData.append("sub_category", payload.sub_category);
+  }
+  if (payload.incident_location) {
+    formData.append("incident_location", payload.incident_location);
+  }
+  if (payload.incident_date) {
+    formData.append("incident_date", payload.incident_date);
+  }
+
+  // DRF BooleanField multipart menerima "true"/"false", jadi checkbox yang
+  // tidak dicentang tetap dikirim eksplisit alih-alih dihilangkan.
+  formData.append("is_anonymous", String(payload.is_anonymous));
+
   formData.append("title", payload.title);
   formData.append("description", payload.description);
 
@@ -97,3 +130,29 @@ export const getComplaintCategories = async (): Promise<ComplaintCategory[]> => 
   const response = await api.get("/complaints/categories/");
   return response.data;
 };
+
+// Sub-kategori dikonsumsi di halaman daftar (badge, filter, kartu) di luar
+// alur create; map ini menghindari fetch ulang endpoint kategori cukup untuk
+// sekadar menampilkan label. Nilai harus tetap sinkron dengan backend.
+export const SUB_CATEGORY_LABELS: Record<string, string> = {
+  JADWAL_KULIAH: "Jadwal kuliah",
+  DOSEN_TIDAK_HADIR: "Dosen tidak hadir",
+  KESALAHAN_NILAI: "Kesalahan nilai",
+  KENDALA_KRS: "Kendala KRS",
+  PELAYANAN_AKADEMIK: "Pelayanan akademik",
+  KEHILANGAN_BARANG: "Kehilangan barang",
+  MASALAH_PARKIR: "Masalah parkir",
+  PENCURIAN: "Pencurian",
+  GANGGUAN_KEAMANAN: "Gangguan keamanan",
+  PELECEHAN_PERUNDUNGAN: "Pelecehan atau perundungan",
+};
+
+export const subCategoryLabel = (value: string | null): string | null =>
+  value && SUB_CATEGORY_LABELS[value] ? SUB_CATEGORY_LABELS[value] : null;
+
+// "Berbahaya" pada media: foto untuk dua sub-kategori ini ditolak backend
+// (media dilayani langsung di /media/ tanpa pemeriksaan permission).
+export const SENSITIVE_IMAGE_SUB_CATEGORIES: readonly string[] = [
+  "PENCURIAN",
+  "PELECEHAN_PERUNDUNGAN",
+];

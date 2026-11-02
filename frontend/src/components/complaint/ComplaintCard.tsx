@@ -1,6 +1,7 @@
-import { MapPin, Calendar, ChevronRight, User, Building2, GraduationCap, Shield } from "lucide-react"
+import { MapPin, Calendar, ChevronRight, User, Ghost, Building2, GraduationCap, Shield } from "lucide-react"
 import { Link } from "react-router-dom"
 
+import { subCategoryLabel } from "../../services/complaintService"
 import StatusBadge from "../ui/StatusBadge"
 
 type Status =
@@ -15,11 +16,15 @@ interface ComplaintCardProps {
   id: number
   title: string
   category: Category
+  // Nilai mentah (mis. "PENCURIAN"); label tampilan dihitung di sini.
+  subCategory?: string | null
   location: string
   date: string
   status: Status
   // Hanya diisi untuk role ADMIN; backend mengirim null untuk role lain.
   reporter?: string | null
+  // Tampil "Anonim" saat laporan anonim dan identitas memang tidak terkirim.
+  isAnonymous?: boolean
 }
 
 function CategoryBadge({ category }: { category: Category }) {
@@ -57,16 +62,35 @@ function ComplaintCard({
   id,
   title,
   category,
+  subCategory,
   location,
   date,
   status,
   reporter,
+  isAnonymous = false,
 }: ComplaintCardProps) {
+  const subLabel = subCategoryLabel(subCategory ?? null)
+
   return (
     <article className="glass-card glass-card-hover group rounded-2xl p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <CategoryBadge category={category} />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <CategoryBadge category={category} />
+
+            {subLabel && (
+              <span className="text-xs font-medium text-slate-500">
+                {subLabel}
+              </span>
+            )}
+
+            {isAnonymous && !reporter && (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                <Ghost size={11} />
+                Anonim
+              </span>
+            )}
+          </div>
 
           <h3 className="mt-1.5 font-semibold tracking-tight text-slate-900">
             {title}

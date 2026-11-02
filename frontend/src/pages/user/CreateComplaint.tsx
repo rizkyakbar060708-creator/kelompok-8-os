@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import axios from "axios"
 
-import { createComplaint, getComplaintCategories, type ComplaintCategory } from "../../services/complaintService"
+import { createComplaint, getComplaintCategories, SENSITIVE_IMAGE_SUB_CATEGORIES, type ComplaintCategory } from "../../services/complaintService"
 import { getFacilities, type Facility } from "../../services/facilityService"
 
 // Backend menyimpan title di CharField(max_length=200). Batas yang sama
@@ -88,6 +88,10 @@ function CreateComplaint() {
   const [categories, setCategories] = useState<ComplaintCategory[]>([])
   const [facilityId, setFacilityId] = useState("")
   const [category, setCategory] = useState<"FASILITAS" | "AKADEMIK" | "KEAMANAN">("FASILITAS")
+  const [subCategoryId, setSubCategoryId] = useState("")
+  const [incidentLocation, setIncidentLocation] = useState("")
+  const [incidentDate, setIncidentDate] = useState("")
+  const [isAnonymous, setIsAnonymous] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [image, setImage] = useState<File | null>(null)
@@ -109,6 +113,14 @@ function CreateComplaint() {
     () => groupByBuilding(facilities),
     [facilities],
   )
+
+  // Sub-kategori selalu mengikuti kategori aktif; FASILITAS tidak punya.
+  const subOptions =
+    categories.find((cat) => cat.value === category)?.sub_categories ?? []
+
+  // Upload foto disembunyikan untuk sub-kategori sensitif; media dilayani
+  // publik di /media/ tanpa pemeriksaan permission, jadi backend menolaknya.
+  const imageHidden = SENSITIVE_IMAGE_SUB_CATEGORIES.includes(subCategoryId)
 
   useEffect(() => {
     let active = true
@@ -258,6 +270,10 @@ function CreateComplaint() {
         // Hanya kategori FASILITAS yang boleh membawa fasilitas.
         facility: category === "FASILITAS" && facilityId ? Number(facilityId) : null,
         category,
+        sub_category: subCategoryId || null,
+        incident_location: incidentLocation.trim() || null,
+        incident_date: incidentDate || null,
+        is_anonymous: isAnonymous,
         title: title.trim(),
         description: description.trim(),
         image,
@@ -291,8 +307,12 @@ function CreateComplaint() {
           firstErrorMessage(data, [
             "title",
             "description",
-            "facility",
             "category",
+            "sub_category",
+            "facility",
+            "incident_location",
+            "incident_date",
+            "is_anonymous",
             "image",
             "status",
             "priority",
@@ -392,6 +412,10 @@ function CreateComplaint() {
                 // backend menolaknya dengan 400 padahal field fasilitas sudah
                 // tidak tampil di layar.
                 setFacilityId("")
+
+                // Pilihan sub-kategori milik kategori lama ikut dibuang;
+                // pasangan kategori/sub yang salah juga ditolak backend.
+                setSubCategoryId("")
               }}
               disabled={isLoadingCategories}
             >
@@ -408,6 +432,54 @@ function CreateComplaint() {
               ))}
             </select>
           </div>
+
+          {category !== "FASILITAS" && (
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="sub-category"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
+                Sub-Kategori
+              </label>
+
+              <select
+                id="sub-category"
+                name="sub-category"
+                className="input-base cursor-pointer"
+                required
+                value={subCategoryId}
+                onChange={(event) => {
+                  setSubCategoryId(event.target.value)
+
+                  // Foto yang sudah dipilih juga dibuang: backend menolak
+                  // laporan sensitif dengan lampiran.
+                  if (SENSITIVE_IMAGE_SUB_CATEGORIES.includes(event.target.value)) {
+                    removeImage()
+                  }
+                }}
+                disabled={isLoadingCategories || subOptions.length === 0}
+              >
+                <option value="" disabled>
+                  {isLoadingCategories
+                    ? "Memuat sub-kategori..."
+                    : "Pilih sub-kategori"}
+                </option>
+
+                {subOptions.map((sub) => (
+                  <option key={sub.value} value={sub.value}>
+                    {sub.label}
+                  </option>
+                ))}
+              </select>
+
+              {subCategoryId === "PELECEHAN_PERUNDUNGAN" && (
+                <p className="mt-2 text-xs text-slate-600">
+                  Laporan ini hanya dapat dilihat oleh kamu dan admin. Tidak
+                  dapat dilampiri foto.
+                </p>
+              )}
+            </div>
+          )}
 
           {category === "FASILITAS" && (
             <div className="sm:col-span-2">
@@ -473,20 +545,89 @@ function CreateComplaint() {
           />
         </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="relative">
+            <label
+              htmlFor="incident-location"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Lokasi Kejadian <span className="text-slate-400">(opsional)</span>
+            </label>
+
+            <input
+              id="incident-location"
+              name="incident-location"
+              type="text"
+              value={incidentLocation}
+              onChange={(event) => setIncidentLocation(event.target.value)}
+              placeholder="Contoh: Laboratorium Komputer, Gedung C"
+              className="input-base"
+              maxLength={255}
+            />
+          </div>
+
+          <div className="relative">
+            <label
+              htmlFor="incident-date"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Waktu Kejadian <span className="text-slate-400">(opsional)</span>
+            </label>
+
+            {/* Nilai datetime-local sudah berformat ISO 8601 sans detik,
+                yang tetap diterima parser DateTimeField backend. */}
+            <input
+              id="incident-date"
+              name="incident-date"
+              type="datetime-local"
+              value={incidentDate}
+              onChange={(event) => setIncidentDate(event.target.value)}
+              className="input-base"
+            />
+
+            <p className="mt-2 text-xs text-slate-500">
+              Waktu kejadian tidak boleh di masa depan.
+            </p>
+          </div>
+        </div>
+
         <div className="relative">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              id="is-anonymous"
+              name="is-anonymous"
+              type="checkbox"
+              checked={isAnonymous}
+              onChange={(event) => setIsAnonymous(event.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-indigo-600"
+            />
+
+            <span className="text-sm text-slate-800">
+              <span className="font-medium">Kirim sebagai anonim</span>
+              <span className="mt-1 block text-xs text-slate-500">
+                Identitasmu disembunyikan dari petugas, tetapi tetap tercatat
+                dan dapat dilihat oleh admin serta dirimu sendiri.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {/* Input tetap termount meski upload disembunyikan; openPicker()
+            dan removeImage() bergantung pada ref ini. */}
+        <input
+          id="image"
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          onChange={handleImageChange}
+          className="hidden"
+        />
+
+        {!imageHidden && (
+          <div className="relative">
           <span className="mb-2 block text-sm font-medium text-slate-700">
             Foto Fasilitas
           </span>
-
-          {/* Satu input untuk seumur component, dipicu lewat openPicker(). */}
-          <input
-            id="image"
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={handleImageChange}
-            className="hidden"
-          />
 
           {!image ? (
             <button
@@ -553,7 +694,8 @@ function CreateComplaint() {
               )}
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         <div className="relative flex flex-col-reverse gap-3 border-t border-slate-900/[0.08] pt-6 sm:flex-row sm:justify-end">
           <Link to="/complaints" className="btn-secondary w-full sm:w-auto">

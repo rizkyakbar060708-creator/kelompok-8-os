@@ -16,6 +16,7 @@ import EmptyState from "../../components/ui/EmptyState"
 import { useAuth } from "../../contexts/AuthContext"
 import {
   getComplaints,
+  SUB_CATEGORY_LABELS,
   type Complaint,
 } from "../../services/complaintService"
 import { getFacilities } from "../../services/facilityService"
@@ -25,6 +26,7 @@ import { STAFF } from "../../utils/roles"
 type Status = Complaint["status"] | "all"
 type Priority = Complaint["priority"] | "all"
 type Category = Complaint["category"] | "all"
+type SubCategory = string | "all"
 
 const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: "all", label: "Semua Status" },
@@ -57,6 +59,35 @@ const isPriority = (value: string | null): value is Priority =>
 const isCategory = (value: string | null): value is Category =>
   CATEGORY_OPTIONS.some((option) => option.value === value)
 
+// Label sub-kategori memakai map yang sama dengan badge kartu supaya satu
+// perubahan label tidak harus diulang di dua tempat.
+const categorySubValues: Record<"AKADEMIK" | "KEAMANAN", string[]> = {
+  AKADEMIK: [
+    "JADWAL_KULIAH",
+    "DOSEN_TIDAK_HADIR",
+    "KESALAHAN_NILAI",
+    "KENDALA_KRS",
+    "PELAYANAN_AKADEMIK",
+  ],
+  KEAMANAN: [
+    "KEHILANGAN_BARANG",
+    "MASALAH_PARKIR",
+    "PENCURIAN",
+    "GANGGUAN_KEAMANAN",
+    "PELECEHAN_PERUNDUNGAN",
+  ],
+}
+
+const SUB_CATEGORY_OPTIONS: { value: SubCategory; label: string }[] = [
+  { value: "all", label: "Semua Sub-Kategori" },
+  ...Object.values(categorySubValues)
+    .flat()
+    .map((value) => ({ value: value as SubCategory, label: SUB_CATEGORY_LABELS[value] })),
+]
+
+const iSubCategory = (value: string | null): value is Exclude<SubCategory, "all"> =>
+  Object.hasOwn(SUB_CATEGORY_LABELS, value ?? "")
+
 function Complaints() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -71,11 +102,15 @@ function Complaints() {
   const statusParam = searchParams.get("status")
   const priorityParam = searchParams.get("priority")
   const categoryParam = searchParams.get("category")
+  const subCategoryParam = searchParams.get("sub_category")
   const statusFilter: Status = isStatus(statusParam) ? statusParam : "all"
   const priorityFilter: Priority = isPriority(priorityParam)
     ? priorityParam
     : "all"
   const categoryFilter: Category = isCategory(categoryParam) ? categoryParam : "all"
+  const subCategoryFilter: SubCategory = iSubCategory(subCategoryParam)
+    ? subCategoryParam
+    : "all"
   // Retry memakai state, bukan window.location.reload(), supaya state aplikasi
   // (filter pencarian, hasil scroll) tidak ikut hilang setiap kali user
   // menekan tombol muat ulang.
@@ -126,9 +161,15 @@ function Complaints() {
   const complaints = rows ?? []
   const isLoading = rows === null
   const hasActiveFilter =
-    statusFilter !== "all" || priorityFilter !== "all" || categoryFilter !== "all"
+    statusFilter !== "all" ||
+    priorityFilter !== "all" ||
+    categoryFilter !== "all" ||
+    subCategoryFilter !== "all"
 
-  const setFilterParam = (key: "status" | "priority" | "category", value: string) => {
+  const setFilterParam = (
+    key: "status" | "priority" | "category" | "sub_category",
+    value: string,
+  ) => {
     const next = new URLSearchParams(searchParams)
 
     if (value === "all") {
@@ -159,7 +200,16 @@ function Complaints() {
     const matchesCategory =
       categoryFilter === "all" || complaint.category === categoryFilter
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesCategory
+    const matchesSubCategory =
+      subCategoryFilter === "all" || complaint.sub_category === subCategoryFilter
+
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesPriority &&
+      matchesCategory &&
+      matchesSubCategory
+    )
   })
 
   const pendingCount = complaints.filter(
@@ -251,6 +301,21 @@ function Complaints() {
             </option>
           ))}
         </select>
+
+        <select
+          value={subCategoryFilter}
+          onChange={(event) =>
+            setFilterParam("sub_category", event.target.value)
+          }
+          aria-label="Filter sub-kategori pengaduan"
+          className="input-base cursor-pointer py-2.5 sm:w-52"
+        >
+          {SUB_CATEGORY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {!isLoading && !error && (
@@ -317,6 +382,7 @@ function Complaints() {
               id={complaint.id}
               title={complaint.title}
               category={complaint.category}
+              subCategory={complaint.sub_category}
               location={`${complaint.facilityName} · ${complaint.location}`}
               date={new Date(complaint.created_at).toLocaleDateString(
                 "id-ID",
@@ -328,6 +394,7 @@ function Complaints() {
               )}
               status={complaint.status}
               reporter={complaint.reporter_username}
+              isAnonymous={complaint.is_anonymous}
             />
           ))}
         </div>
