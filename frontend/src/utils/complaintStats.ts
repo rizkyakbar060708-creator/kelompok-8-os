@@ -46,12 +46,16 @@ export function joinFacilities(
 
   return complaints
     .map((complaint) => {
-      const facility = byId.get(complaint.facility);
+      // Kategori AKADEMIK/KEAMANAN tidak punya fasilitas, jadi facility null.
+      const facility =
+        complaint.facility === null
+          ? undefined
+          : byId.get(complaint.facility);
 
       return {
         ...complaint,
-        facilityName: facility?.name ?? "Fasilitas tidak dikenal",
-        location: facility?.location ?? "Lokasi tidak tersedia",
+        facilityName: facility?.name ?? "Tanpa fasilitas",
+        location: facility?.location ?? "Tidak terkait fasilitas",
       };
     })
     .sort(
@@ -146,6 +150,11 @@ export function facilityLoad(
   const totals = new Map<number, FacilityLoad>();
 
   for (const row of rows) {
+    // Ranking per fasilitas hanya bermakna untuk pengaduan yang punya fasilitas.
+    if (row.facility === null) {
+      continue;
+    }
+
     const entry = totals.get(row.facility) ?? {
       facilityId: row.facility,
       facilityName: row.facilityName,

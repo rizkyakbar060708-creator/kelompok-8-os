@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import axios from "axios"
 
-import { createComplaint } from "../../services/complaintService"
+import { createComplaint, getComplaintCategories, type ComplaintCategory } from "../../services/complaintService"
 import { getFacilities, type Facility } from "../../services/facilityService"
 
 // Backend menyimpan title di CharField(max_length=200). Batas yang sama
@@ -85,12 +85,15 @@ function CreateComplaint() {
   const navigate = useNavigate()
 
   const [facilities, setFacilities] = useState<Facility[]>([])
+  const [categories, setCategories] = useState<ComplaintCategory[]>([])
   const [facilityId, setFacilityId] = useState("")
+  const [category, setCategory] = useState<"FASILITAS" | "AKADEMIK" | "KEAMANAN">("FASILITAS")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [image, setImage] = useState<File | null>(null)
   const [preview, setPreview] = useState("")
   const [isLoadingFacilities, setIsLoadingFacilities] = useState(true)
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -124,6 +127,34 @@ function CreateComplaint() {
       } finally {
         if (active) {
           setIsLoadingFacilities(false)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const load = async () => {
+      try {
+        const data = await getComplaintCategories()
+
+        if (active) {
+          setCategories(data)
+        }
+      } catch {
+        if (active) {
+          setError("Gagal memuat kategori pengaduan.")
+        }
+      } finally {
+        if (active) {
+          setIsLoadingCategories(false)
         }
       }
     }
@@ -224,7 +255,8 @@ function CreateComplaint() {
 
     try {
       await createComplaint({
-        facility: Number(facilityId),
+        facility: facilityId ? Number(facilityId) : null,
+        category,
         title: title.trim(),
         description: description.trim(),
         image,
@@ -259,6 +291,7 @@ function CreateComplaint() {
             "title",
             "description",
             "facility",
+            "category",
             "image",
             "status",
             "priority",
@@ -337,42 +370,81 @@ function CreateComplaint() {
 
           <div className="sm:col-span-2">
             <label
-              htmlFor="facility"
+              htmlFor="category"
               className="mb-2 block text-sm font-medium text-slate-700"
             >
-              Fasilitas Bermasalah
+              Kategori Pengaduan
             </label>
 
             <select
-              id="facility"
-              name="facility"
+              id="category"
+              name="category"
               className="input-base cursor-pointer"
               required
-              value={facilityId}
-              onChange={(event) => setFacilityId(event.target.value)}
-              disabled={isLoadingFacilities || facilityGroups.length === 0}
+              value={category}
+              onChange={(event) =>
+                setCategory(
+                  event.target.value as "FASILITAS" | "AKADEMIK" | "KEAMANAN"
+                )
+              }
+              disabled={isLoadingCategories}
             >
               <option value="" disabled>
-                {isLoadingFacilities
-                  ? "Memuat fasilitas..."
-                  : "Pilih fasilitas"}
+                {isLoadingCategories
+                  ? "Memuat kategori..."
+                  : "Pilih kategori"}
               </option>
 
-              {facilityGroups.map(([building, items]) => (
-                <optgroup key={building} label={building}>
-                  {items.map((facility) => {
-                    const { floor } = splitLocation(facility.location)
-
-                    return (
-                      <option key={facility.id} value={facility.id}>
-                        {floor ? `${facility.name} - ${floor}` : facility.name}
-                      </option>
-                    )
-                  })}
-                </optgroup>
+              {categories.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
               ))}
             </select>
           </div>
+
+          {category === "FASILITAS" && (
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="facility"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
+                Fasilitas Bermasalah
+              </label>
+
+              <select
+                id="facility"
+                name="facility"
+                className="input-base cursor-pointer"
+                required
+                value={facilityId}
+                onChange={(event) => setFacilityId(event.target.value)}
+                disabled={isLoadingFacilities || facilityGroups.length === 0}
+              >
+                <option value="" disabled>
+                  {isLoadingFacilities
+                    ? "Memuat fasilitas..."
+                    : "Pilih fasilitas"}
+                </option>
+
+                {facilityGroups.map(([building, items]) => (
+                  <optgroup key={building} label={building}>
+                    {items.map((facility) => {
+                      const { floor } = splitLocation(facility.location)
+
+                      return (
+                        <option key={facility.id} value={facility.id}>
+                          {floor
+                            ? `${facility.name} - ${floor}`
+                            : facility.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="relative">
@@ -389,7 +461,7 @@ function CreateComplaint() {
             rows={5}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="Jelaskan masalah fasilitas secara detail..."
+            placeholder={category === "FASILITAS" ? "Jelaskan masalah fasilitas secara detail..." : "Jelaskan masalah secara detail..."}
             className="input-base resize-none"
             required
           />
@@ -484,7 +556,7 @@ function CreateComplaint() {
 
           <button
             type="submit"
-            disabled={loading || isLoadingFacilities}
+            disabled={loading || isLoadingFacilities || isLoadingCategories}
             className="btn-primary w-full sm:w-auto"
           >
             {loading ? (

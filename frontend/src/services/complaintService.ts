@@ -5,7 +5,8 @@ export interface Complaint {
   reporter: number;
   // Hanya diisi untuk role ADMIN; backend mengirim null untuk role lain.
   reporter_username?: string | null;
-  facility: number;
+  facility: number | null;
+  category: "FASILITAS" | "AKADEMIK" | "KEAMANAN";
   title: string;
   description: string;
   status: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "REJECTED";
@@ -16,8 +17,14 @@ export interface Complaint {
   updated_at: string;
 }
 
+export interface ComplaintCategory {
+  value: string;
+  label: string;
+}
+
 export interface CreateComplaintPayload {
-  facility: number;
+  facility?: number | null;
+  category: "FASILITAS" | "AKADEMIK" | "KEAMANAN";
   title: string;
   description: string;
   image?: File | null;
@@ -55,7 +62,10 @@ export const createComplaint = async (
 ): Promise<Complaint> => {
   const formData = new FormData();
 
-  formData.append("facility", String(payload.facility));
+  if (payload.facility !== undefined && payload.facility !== null) {
+    formData.append("facility", String(payload.facility));
+  }
+  formData.append("category", payload.category);
   formData.append("title", payload.title);
   formData.append("description", payload.description);
 
@@ -81,4 +91,9 @@ export const updateComplaint = async (
 
 export const deleteComplaint = async (id: number): Promise<void> => {
   await api.delete(`/complaints/${id}/`);
+};
+
+export const getComplaintCategories = async (): Promise<ComplaintCategory[]> => {
+  const response = await api.get("/complaints/categories/");
+  return response.data;
 };

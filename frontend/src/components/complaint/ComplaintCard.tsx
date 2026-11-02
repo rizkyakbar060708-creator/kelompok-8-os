@@ -1,4 +1,4 @@
-import { MapPin, Calendar, ChevronRight, User } from "lucide-react"
+import { MapPin, Calendar, ChevronRight, User, Building2, GraduationCap, Shield } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import StatusBadge from "../ui/StatusBadge"
@@ -9,15 +9,48 @@ type Status =
   | "RESOLVED"
   | "REJECTED"
 
+type Category = "FASILITAS" | "AKADEMIK" | "KEAMANAN"
+
 interface ComplaintCardProps {
   id: number
   title: string
-  category: string
+  category: Category
   location: string
   date: string
   status: Status
   // Hanya diisi untuk role ADMIN; backend mengirim null untuk role lain.
   reporter?: string | null
+}
+
+function CategoryBadge({ category }: { category: Category }) {
+  // Latar opak seperti StatusBadge (design.md §7.4), bukan permukaan kaca,
+  // supaya badge tetap terbaca di atas glass-card.
+  const config = {
+    FASILITAS: {
+      label: "Fasilitas",
+      className: "bg-indigo-100 text-indigo-700",
+      icon: Building2,
+    },
+    AKADEMIK: {
+      label: "Akademik",
+      className: "bg-emerald-100 text-emerald-700",
+      icon: GraduationCap,
+    },
+    KEAMANAN: {
+      label: "Keamanan",
+      className: "bg-amber-100 text-amber-700",
+      icon: Shield,
+    },
+  }[category]
+
+  const Icon = config.icon
+
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${config.className}`}>
+      <Icon size={11} />
+      {config.label}
+    </span>
+  )
 }
 
 function ComplaintCard({
@@ -33,11 +66,9 @@ function ComplaintCard({
     <article className="glass-card glass-card-hover group rounded-2xl p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-indigo-600">
-            {category}
-          </p>
+          <CategoryBadge category={category} />
 
-          <h3 className="font-semibold tracking-tight text-slate-900">
+          <h3 className="mt-1.5 font-semibold tracking-tight text-slate-900">
             {title}
           </h3>
         </div>

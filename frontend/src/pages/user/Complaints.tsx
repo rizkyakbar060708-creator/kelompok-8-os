@@ -24,6 +24,7 @@ import { STAFF } from "../../utils/roles"
 
 type Status = Complaint["status"] | "all"
 type Priority = Complaint["priority"] | "all"
+type Category = Complaint["category"] | "all"
 
 const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: "all", label: "Semua Status" },
@@ -40,11 +41,21 @@ const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
   { value: "LOW", label: "Rendah" },
 ]
 
+const CATEGORY_OPTIONS: { value: Category; label: string }[] = [
+  { value: "all", label: "Semua Kategori" },
+  { value: "FASILITAS", label: "Fasilitas" },
+  { value: "AKADEMIK", label: "Akademik" },
+  { value: "KEAMANAN", label: "Keamanan" },
+]
+
 const isStatus = (value: string | null): value is Status =>
   STATUS_OPTIONS.some((option) => option.value === value)
 
 const isPriority = (value: string | null): value is Priority =>
   PRIORITY_OPTIONS.some((option) => option.value === value)
+
+const isCategory = (value: string | null): value is Category =>
+  CATEGORY_OPTIONS.some((option) => option.value === value)
 
 function Complaints() {
   const { user } = useAuth()
@@ -52,17 +63,19 @@ function Complaints() {
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [error, setError] = useState("")
   const [search, setSearch] = useState("")
-  // Filter status dan prioritas datang dari query string supaya tautan pintasan
+  // Filter status, prioritas, dan kategori datang dari query string supaya tautan pintasan
   // dari dashboard (mis. ?status=PENDING) langsung bekerja dan tombol "kembali"
   // browser mengembalikan keadaan filter yang sama. Nilai yang tidak dikenal
   // di URL diperlakukan sebagai "all" supaya parameter rusak tidak membuat
   // daftar kosong tanpa penjelasan.
   const statusParam = searchParams.get("status")
   const priorityParam = searchParams.get("priority")
+  const categoryParam = searchParams.get("category")
   const statusFilter: Status = isStatus(statusParam) ? statusParam : "all"
   const priorityFilter: Priority = isPriority(priorityParam)
     ? priorityParam
     : "all"
+  const categoryFilter: Category = isCategory(categoryParam) ? categoryParam : "all"
   // Retry memakai state, bukan window.location.reload(), supaya state aplikasi
   // (filter pencarian, hasil scroll) tidak ikut hilang setiap kali user
   // menekan tombol muat ulang.
@@ -112,9 +125,10 @@ function Complaints() {
 
   const complaints = rows ?? []
   const isLoading = rows === null
-  const hasActiveFilter = statusFilter !== "all" || priorityFilter !== "all"
+  const hasActiveFilter =
+    statusFilter !== "all" || priorityFilter !== "all" || categoryFilter !== "all"
 
-  const setFilterParam = (key: "status" | "priority", value: string) => {
+  const setFilterParam = (key: "status" | "priority" | "category", value: string) => {
     const next = new URLSearchParams(searchParams)
 
     if (value === "all") {
@@ -142,7 +156,10 @@ function Complaints() {
     const matchesPriority =
       priorityFilter === "all" || complaint.priority === priorityFilter
 
-    return matchesSearch && matchesStatus && matchesPriority
+    const matchesCategory =
+      categoryFilter === "all" || complaint.category === categoryFilter
+
+    return matchesSearch && matchesStatus && matchesPriority && matchesCategory
   })
 
   const pendingCount = complaints.filter(
@@ -219,6 +236,21 @@ function Complaints() {
             </option>
           ))}
         </select>
+
+        <select
+          value={categoryFilter}
+          onChange={(event) =>
+            setFilterParam("category", event.target.value)
+          }
+          aria-label="Filter kategori pengaduan"
+          className="input-base cursor-pointer py-2.5 sm:w-48"
+        >
+          {CATEGORY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {!isLoading && !error && (
@@ -284,7 +316,7 @@ function Complaints() {
               key={complaint.id}
               id={complaint.id}
               title={complaint.title}
-              category={`Prioritas ${complaint.priority}`}
+              category={complaint.category}
               location={`${complaint.facilityName} · ${complaint.location}`}
               date={new Date(complaint.created_at).toLocaleDateString(
                 "id-ID",
