@@ -255,7 +255,8 @@ function CreateComplaint() {
 
     try {
       await createComplaint({
-        facility: facilityId ? Number(facilityId) : null,
+        // Hanya kategori FASILITAS yang boleh membawa fasilitas.
+        facility: category === "FASILITAS" && facilityId ? Number(facilityId) : null,
         category,
         title: title.trim(),
         description: description.trim(),
@@ -382,11 +383,16 @@ function CreateComplaint() {
               className="input-base cursor-pointer"
               required
               value={category}
-              onChange={(event) =>
+              onChange={(event) => {
                 setCategory(
                   event.target.value as "FASILITAS" | "AKADEMIK" | "KEAMANAN"
                 )
-              }
+
+                // Fasilitas lama tidak boleh terkirim bersama kategori lain;
+                // backend menolaknya dengan 400 padahal field fasilitas sudah
+                // tidak tampil di layar.
+                setFacilityId("")
+              }}
               disabled={isLoadingCategories}
             >
               <option value="" disabled>
