@@ -1,10 +1,12 @@
 import io
 import os
 import tempfile
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -641,3 +643,351 @@ class ComplaintImageUploadTests(TestCase):
         response = self._upload(upload)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class ComplaintCategoryValidationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_category",
+            password="Passw0rd!aaa",
+            role=User.Role.STUDENT,
+        )
+        self.facility = Facility.objects.create(
+            name="Proyektor Ruang 201", location="Gedung A - Lantai 2"
+        )
+        self.url = "/api/complaints/"
+
+    def payload(self, **overrides):
+        return {
+            "title": "Laporan baru",
+            "description": "Rincian laporan untuk pengujian.",
+            **overrides,
+        }
+
+    def post(self, payload):
+        self.client.force_authenticate(self.student)
+        return self.client.post(self.url, payload, format="json")
+
+    def test_facility_is_required_only_for_facility_category(self):
+        response = self.post(self.payload(category="FASILITAS"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("facility", response.data)
+
+        response = self.post(
+            self.payload(
+                category="AKADEMIK",
+                sub_category="JADWAL_KULIAH",
+            )
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data["facility"])
+
+    def test_non_facility_category_rejects_facility(self):
+        response = self.post(
+            self.payload(
+                category="KEAMANAN",
+                sub_category="PENCURIAN",
+                facility=self.facility.id,
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("facility", response.data)
+
+    def test_non_facility_category_can_be_created_without_sub_category(self):
+        for category in ("AKADEMIK", "KEAMANAN"):
+            response = self.post(self.payload(category=category))
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(response.data["category"], category)
+            self.assertIsNone(response.data["facility"])
+
+    def test_legacy_complaint_without_category_defaults_to_fasilitas(self):
+        # Pengaduan yang dibuat sebelum kolom category ada otomatis menjadi
+        # FASILITAS lewat default model, bukan lewat backfill manual.
+        complaint = Complaint.objects.create(
+            reporter=self.student,
+            facility=self.facility,
+            title="Pengaduan lama",
+            description="Dibuat sebelum kategori ditambahkan.",
+        )
+
+        self.assertEqual(complaint.category, Complaint.Category.FASILITAS)
+
+        self.client.force_authenticate(self.student)
+        response = self.client.get(f"/api/complaints/{complaint.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["category"], "FASILITAS")
+        self.assertEqual(response.data["facility"], self.facility.id)
+
+    def test_facility_category_requires_empty_sub_category(self):
+        response = self.post(
+            self.payload(
+                category="FASILITAS",
+                facility=self.facility.id,
+                sub_category="PENCURIAN",
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("sub_category", response.data)
+
+    def test_sub_category_must_match_its_category(self):
+        response = self.post(
+            self.payload(
+                category="AKADEMIK",
+                sub_category="PENCURIAN",
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("sub_category", response.data)
+
+    def test_incident_date_cannot_be_in_the_future(self):
+        response = self.post(
+            self.payload(
+                category="AKADEMIK",
+                sub_category="JADWAL_KULIAH",
+                incident_date=(timezone.now() + timedelta(minutes=1)).isoformat(),
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("incident_date", response.data)
+
+    def test_security_sub_categories_get_high_priority_automatically(self):
+        for sub_category in ("PENCURIAN", "PELECEHAN_PERUNDUNGAN"):
+            response = self.post(
+                self.payload(
+                    category="KEAMANAN",
+                    sub_category=sub_category,
+                )
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(response.data["priority"], Complaint.Priority.HIGH)
+
+    def test_sensitive_sub_category_rejects_image_when_created(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.post(
+            self.url,
+            {
+                **self.payload(
+                    category="KEAMANAN",
+                    sub_category="PELECEHAN_PERUNDUNGAN",
+                ),
+                "image": SimpleUploadedFile(
+                    "bukti.png", image_bytes(), content_type="image/png"
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("image", response.data)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class ComplaintCategoryAccessTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_sensitive",
+            password="Passw0rd!aaa",
+            role=User.Role.STUDENT,
+        )
+        self.other_student = User.objects.create_user(
+            username="student_filter",
+            password="Passw0rd!aaa",
+            role=User.Role.STUDENT,
+        )
+        self.staff = User.objects.create_user(
+            username="staff_sensitive",
+            password="Passw0rd!aaa",
+            role=User.Role.STAFF,
+        )
+        self.admin = User.objects.create_user(
+            username="admin_sensitive",
+            password="Passw0rd!aaa",
+            role=User.Role.ADMIN,
+        )
+        self.facility = Facility.objects.create(
+            name="Pintu Gedung B", location="Gedung B - Lantai 1"
+        )
+
+    def create_complaint(self, reporter, **overrides):
+        values = {
+            "reporter": reporter,
+            "title": "Laporan keamanan",
+            "description": "Rincian laporan untuk pengujian.",
+            "category": Complaint.Category.KEAMANAN,
+            "sub_category": Complaint.SubCategory.PENCURIAN,
+        }
+        values.update(overrides)
+        return Complaint.objects.create(**values)
+
+    def ids(self, response):
+        return {item["id"] for item in response.data}
+
+    def test_staff_cannot_reveal_sensitive_reports_through_filters(self):
+        sensitive = self.create_complaint(
+            self.student,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+        )
+        theft = self.create_complaint(self.other_student)
+        self.client.force_authenticate(self.staff)
+
+        category_response = self.client.get(
+            "/api/complaints/", {"category": Complaint.Category.KEAMANAN}
+        )
+        sub_category_response = self.client.get(
+            "/api/complaints/",
+            {"sub_category": Complaint.SubCategory.PELECEHAN_PERUNDUNGAN},
+        )
+
+        self.assertEqual(category_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids(category_response), {theft.id})
+        self.assertNotIn(sensitive.id, self.ids(category_response))
+        self.assertEqual(sub_category_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids(sub_category_response), set())
+
+    def test_student_filter_cannot_reveal_another_students_report(self):
+        own = self.create_complaint(self.student)
+        foreign = self.create_complaint(self.other_student)
+        self.client.force_authenticate(self.student)
+
+        response = self.client.get(
+            "/api/complaints/",
+            {"sub_category": Complaint.SubCategory.PENCURIAN},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids(response), {own.id})
+        self.assertNotIn(foreign.id, self.ids(response))
+
+    def test_sensitive_report_is_only_available_to_reporter_and_admin(self):
+        complaint = self.create_complaint(
+            self.student,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+        )
+        url = f"/api/complaints/{complaint.id}/"
+
+        self.client.force_authenticate(self.staff)
+        self.assertEqual(
+            self.client.get(url).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+        self.client.force_authenticate(self.student)
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_200_OK)
+
+    def test_anonymous_report_hides_reporter_from_staff_but_not_owner_or_admin(self):
+        complaint = Complaint.objects.create(
+            reporter=self.student,
+            facility=self.facility,
+            title="Lampu koridor mati",
+            description="Sudah gelap sejak sore.",
+            is_anonymous=True,
+        )
+        url = f"/api/complaints/{complaint.id}/"
+
+        self.client.force_authenticate(self.staff)
+        staff_response = self.client.get(url)
+        self.assertIsNone(staff_response.data["reporter"])
+        self.assertIsNone(staff_response.data["reporter_username"])
+
+        self.client.force_authenticate(self.student)
+        owner_response = self.client.get(url)
+        self.assertEqual(owner_response.data["reporter"], self.student.id)
+        self.assertEqual(owner_response.data["reporter_username"], self.student.username)
+
+        self.client.force_authenticate(self.admin)
+        admin_response = self.client.get(url)
+        self.assertEqual(admin_response.data["reporter"], self.student.id)
+        self.assertEqual(admin_response.data["reporter_username"], self.student.username)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class ComplaintImmutableCategoryTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_immutable",
+            password="Passw0rd!aaa",
+            role=User.Role.STUDENT,
+        )
+        self.admin = User.objects.create_user(
+            username="admin_immutable",
+            password="Passw0rd!aaa",
+            role=User.Role.ADMIN,
+        )
+        self.complaint = Complaint.objects.create(
+            reporter=self.student,
+            title="KRS belum terbuka",
+            description="Perlu diperiksa.",
+            category=Complaint.Category.AKADEMIK,
+            sub_category=Complaint.SubCategory.KENDALA_KRS,
+        )
+        self.url = f"/api/complaints/{self.complaint.id}/"
+
+    def test_category_fields_are_read_only_after_create_for_every_role(self):
+        updates = {
+            "category": Complaint.Category.KEAMANAN,
+            "sub_category": Complaint.SubCategory.PENCURIAN,
+            "is_anonymous": True,
+        }
+
+        for user in (self.student, self.admin):
+            self.client.force_authenticate(user)
+            for field, value in updates.items():
+                response = self.client.patch(self.url, {field: value}, format="json")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn(field, response.data)
+
+        self.complaint.refresh_from_db()
+        self.assertEqual(self.complaint.category, Complaint.Category.AKADEMIK)
+        self.assertEqual(self.complaint.sub_category, Complaint.SubCategory.KENDALA_KRS)
+        self.assertFalse(self.complaint.is_anonymous)
+
+    def test_sensitive_report_rejects_image_on_patch_and_put(self):
+        complaint = Complaint.objects.create(
+            reporter=self.student,
+            title="Laporan sensitif",
+            description="Rincian laporan sensitif.",
+            category=Complaint.Category.KEAMANAN,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+        )
+        url = f"/api/complaints/{complaint.id}/"
+        self.client.force_authenticate(self.student)
+
+        patch_response = self.client.patch(
+            url,
+            {
+                "image": SimpleUploadedFile(
+                    "patch.png", image_bytes(), content_type="image/png"
+                )
+            },
+            format="multipart",
+        )
+        put_response = self.client.put(
+            url,
+            {
+                "title": complaint.title,
+                "description": complaint.description,
+                "image": SimpleUploadedFile(
+                    "put.png", image_bytes(), content_type="image/png"
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("image", patch_response.data)
+        self.assertEqual(put_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("image", put_response.data)

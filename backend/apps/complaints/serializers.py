@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.accounts.permissions import is_admin, is_manager
@@ -11,6 +12,7 @@ ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png")
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
+    reporter = serializers.SerializerMethodField()
     # Nama pelapor hanya dibutuhkan admin yang harus tahu laporan ini milik
     # siapa, dan hanya admin yang berhak melihat identitas pelapor. Dihitung di
     # serializer supaya field ini benar-benar tidak pernah terkirim ke role
@@ -24,11 +26,16 @@ class ComplaintSerializer(serializers.ModelSerializer):
             "reporter",
             "reporter_username",
             "facility",
+            "category",
+            "sub_category",
             "title",
             "description",
             "status",
             "priority",
             "image",
+            "incident_location",
+            "incident_date",
+            "is_anonymous",
             "created_at",
             "updated_at",
         )
@@ -36,13 +43,16 @@ class ComplaintSerializer(serializers.ModelSerializer):
             "id": {
                 "read_only": True,
             },
-            # Identitas pelapor berasal dari access token, bukan dari payload.
-            # Kalau field ini writable, client bisa mengarang reporter id.
-            "reporter": {
-                "read_only": True,
-            },
             "facility": {
-                "required": True,
+                "required": False,
+                "allow_null": True,
+            },
+            "category": {
+                "required": False,
+            },
+            "sub_category": {
+                "required": False,
+                "allow_blank": True,
             },
             "title": {
                 "required": True,
@@ -62,6 +72,17 @@ class ComplaintSerializer(serializers.ModelSerializer):
                 "required": False,
                 "allow_null": True,
             },
+            "incident_location": {
+                "required": False,
+                "allow_blank": True,
+            },
+            "incident_date": {
+                "required": False,
+                "allow_null": True,
+            },
+            "is_anonymous": {
+                "required": False,
+            },
             "created_at": {
                 "read_only": True,
             },
@@ -69,6 +90,33 @@ class ComplaintSerializer(serializers.ModelSerializer):
                 "read_only": True,
             },
         }
+
+    IMMUTABLE_AFTER_CREATE_FIELDS = {
+        "category": "kategori",
+        "sub_category": "sub-kategori",
+        "is_anonymous": "status anonim",
+    }
+
+    HIGH_PRIORITY_SUBCATEGORIES = {
+        Complaint.SubCategory.PENCURIAN,
+        Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+    }
+
+    def get_reporter(self, obj):
+        """Sembunyikan id pelapor dari staf saat laporan dibuat anonim."""
+        request = self.context.get("request")
+
+        if request is None:
+            return obj.reporter_id
+
+        if (
+            obj.is_anonymous
+            and not is_admin(request.user)
+            and request.user.id != obj.reporter_id
+        ):
+            return None
+
+        return obj.reporter_id
 
     def get_reporter_username(self, obj):
         """Nama pelapor hanya untuk admin, selain itu null.
@@ -78,10 +126,18 @@ class ComplaintSerializer(serializers.ModelSerializer):
         """
         request = self.context.get("request")
 
-        if request is None or not is_admin(request.user):
+        if request is None:
             return None
 
-        return obj.reporter.username
+        if is_admin(request.user):
+            return obj.reporter.username
+
+        # Pelapor tetap dapat mengenali laporannya sendiri ketika memilih
+        # pelaporan anonim; anonimitas ditujukan kepada staf, bukan dirinya.
+        if obj.is_anonymous and request.user.id == obj.reporter_id:
+            return obj.reporter.username
+
+        return None
 
     def validate_image(self, image):
         if image is None:
@@ -107,6 +163,14 @@ class ComplaintSerializer(serializers.ModelSerializer):
             )
 
         return image
+
+    def validate_incident_date(self, value):
+        if value is not None and value > timezone.now():
+            raise serializers.ValidationError(
+                "Tanggal dan waktu kejadian tidak boleh di masa depan."
+            )
+
+        return value
 
     # Dipetakan ke label Bahasa Indonesia supaya pesan error memakai istilah
     # yang sama dengan halaman lain.
@@ -138,6 +202,16 @@ class ComplaintSerializer(serializers.ModelSerializer):
         """
         request = self.context.get("request")
 
+        if self.instance is not None:
+            for field, label in self.IMMUTABLE_AFTER_CREATE_FIELDS.items():
+                # BooleanField pada multipart menganggap checkbox yang tidak
+                # dikirim sebagai False. Periksa payload asli agar PUT untuk
+                # mengganti gambar tidak keliru dianggap mengubah anonimitas.
+                if field in self.initial_data:
+                    raise serializers.ValidationError({
+                        field: [f"{label.capitalize()} hanya dapat diisi saat membuat pengaduan."]
+                    })
+
         if request is not None and not is_manager(request.user):
             for field, label in self.MANAGER_ONLY_FIELDS.items():
                 if field not in attrs:
@@ -153,5 +227,60 @@ class ComplaintSerializer(serializers.ModelSerializer):
                             f"pengaduan."
                         ]
                     })
+
+        category = attrs.get(
+            "category",
+            self.instance.category
+            if self.instance is not None
+            else Complaint.Category.FASILITAS,
+        )
+        sub_category = attrs.get(
+            "sub_category",
+            self.instance.sub_category if self.instance is not None else "",
+        )
+        facility = attrs.get(
+            "facility",
+            self.instance.facility if self.instance is not None else None,
+        )
+        errors = {}
+
+        if category == Complaint.Category.FASILITAS:
+            if facility is None:
+                errors["facility"] = [
+                    "Fasilitas wajib diisi untuk kategori FASILITAS."
+                ]
+            if sub_category:
+                errors["sub_category"] = [
+                    "Sub-kategori harus kosong untuk kategori FASILITAS."
+                ]
+        else:
+            allowed_sub_categories = Complaint.sub_categories_for(category)
+            if facility is not None:
+                errors["facility"] = [
+                    "Fasilitas hanya dapat diisi untuk kategori FASILITAS."
+                ]
+            # Slice kategori belum memakai sub-kategori di frontend, jadi untuk
+            # AKADEMIK/KEAMANAN field ini opsional. Kalau diisi, nilainya tetap
+            # harus termasuk daftar yang diizinkan untuk kategori tersebut.
+            if sub_category and sub_category not in allowed_sub_categories:
+                errors["sub_category"] = [
+                    "Sub-kategori tidak sesuai dengan kategori yang dipilih."
+                ]
+
+        if sub_category == Complaint.SubCategory.PELECEHAN_PERUNDUNGAN:
+            image = attrs.get("image")
+            if image is not None:
+                errors["image"] = [
+                    "Foto tidak dapat diunggah untuk laporan pelecehan atau perundungan."
+                ]
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        if (
+            self.instance is None
+            and sub_category in self.HIGH_PRIORITY_SUBCATEGORIES
+        ):
+            attrs["priority"] = Complaint.Priority.HIGH
 
         return attrs

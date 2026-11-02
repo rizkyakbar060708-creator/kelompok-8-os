@@ -1,11 +1,26 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsManagerOrOwner, is_manager
+from apps.accounts.permissions import IsManagerOrOwner, is_admin, is_manager
 
 from .models import Complaint
 from .permissions import CanDeleteComplaint
 from .serializers import ComplaintSerializer
+
+
+class ComplaintCategoriesView(APIView):
+    """Return list of complaint categories for dropdown."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        categories = [
+            {"value": choice[0], "label": choice[1]}
+            for choice in Complaint.Category.choices
+        ]
+        return Response(categories)
 
 
 class ScopedComplaintMixin:
@@ -22,10 +37,24 @@ class ScopedComplaintMixin:
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        if is_manager(self.request.user):
-            return queryset
+        if is_admin(self.request.user):
+            scoped_queryset = queryset
+        elif is_manager(self.request.user):
+            # Laporan pelecehan/perundungan tidak masuk antrean staf umum.
+            # Filter ini dipasang sebelum query parameter agar staf tidak
+            # dapat memunculkannya kembali lewat URL filter.
+            scoped_queryset = queryset.exclude(
+                sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN
+            )
+        else:
+            scoped_queryset = queryset.filter(reporter=self.request.user)
 
-        return queryset.filter(reporter=self.request.user)
+        for field in ("category", "sub_category", "status"):
+            value = self.request.query_params.get(field)
+            if value:
+                scoped_queryset = scoped_queryset.filter(**{field: value})
+
+        return scoped_queryset
 
 
 class ComplaintListCreateView(ScopedComplaintMixin, generics.ListCreateAPIView):
