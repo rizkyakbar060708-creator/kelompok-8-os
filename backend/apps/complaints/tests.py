@@ -904,6 +904,28 @@ class ComplaintCategoryAccessTests(TestCase):
         self.assertEqual(self.ids(response), {own.id})
         self.assertNotIn(foreign.id, self.ids(response))
 
+    def test_staff_can_see_theft_reports_in_list_and_detail(self):
+        theft = self.create_complaint(self.other_student)
+        forced = self.create_complaint(
+            self.student,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+        )
+        self.client.force_authenticate(self.staff)
+
+        list_response = self.client.get("/api/complaints/")
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertIn(theft.id, self.ids(list_response))
+        # Sensitif: helper create_complaint default-nya memang PENCURIAN.
+        self.assertNotIn(forced.id, self.ids(list_response))
+
+        detail_response = self.client.get(f"/api/complaints/{theft.id}/")
+
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            detail_response.data["sub_category"], Complaint.SubCategory.PENCURIAN
+        )
+
     def test_sensitive_report_is_only_available_to_reporter_and_admin(self):
         complaint = self.create_complaint(
             self.student,
