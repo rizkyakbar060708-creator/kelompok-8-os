@@ -97,10 +97,14 @@ class ComplaintSerializer(serializers.ModelSerializer):
         "is_anonymous": "status anonim",
     }
 
-    HIGH_PRIORITY_SUBCATEGORIES = {
+    # PENCURIAN dan PELECEHAN_PERUNDUNGAN adalah dua sub-kategori sensitif:
+    # keduanya otomatis HIGH saat dibuat, dan salah satunya (PELECEHAN)
+    # juga disembunyikan dari STAFF. Foto dilarang untuk keduanya karena
+    # media dilayani langsung di /media/ tanpa pemeriksaan permission.
+    SENSITIVE_SUBCATEGORIES = frozenset({
         Complaint.SubCategory.PENCURIAN,
         Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
-    }
+    })
 
     def get_reporter(self, obj):
         """Sembunyikan id pelapor dari staf saat laporan dibuat anonim."""
@@ -259,15 +263,19 @@ class ComplaintSerializer(serializers.ModelSerializer):
                 errors["facility"] = [
                     "Fasilitas hanya dapat diisi untuk kategori FASILITAS."
                 ]
-            # Slice kategori belum memakai sub-kategori di frontend, jadi untuk
-            # AKADEMIK/KEAMANAN field ini opsional. Kalau diisi, nilainya tetap
-            # harus termasuk daftar yang diizinkan untuk kategori tersebut.
-            if sub_category and sub_category not in allowed_sub_categories:
+            if self.instance is None and not sub_category:
+                # Sub-kategori baru diwajibkan; pengaduan lama yang dibuat
+                # sebelum fitur ini boleh tetap tanpa sub-kategori selama
+                # field itu tidak dikirim ulang pada update.
+                errors["sub_category"] = [
+                    "Sub-kategori wajib diisi untuk kategori ini."
+                ]
+            elif sub_category and sub_category not in allowed_sub_categories:
                 errors["sub_category"] = [
                     "Sub-kategori tidak sesuai dengan kategori yang dipilih."
                 ]
 
-        if sub_category == Complaint.SubCategory.PELECEHAN_PERUNDUNGAN:
+        if sub_category in self.SENSITIVE_SUBCATEGORIES:
             image = attrs.get("image")
             if image is not None:
                 errors["image"] = [
@@ -279,7 +287,7 @@ class ComplaintSerializer(serializers.ModelSerializer):
 
         if (
             self.instance is None
-            and sub_category in self.HIGH_PRIORITY_SUBCATEGORIES
+            and sub_category in self.SENSITIVE_SUBCATEGORIES
         ):
             attrs["priority"] = Complaint.Priority.HIGH
 

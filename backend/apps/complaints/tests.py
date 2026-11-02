@@ -696,13 +696,47 @@ class ComplaintCategoryValidationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("facility", response.data)
 
-    def test_non_facility_category_can_be_created_without_sub_category(self):
+    def test_non_facility_category_requires_sub_category_on_create(self):
         for category in ("AKADEMIK", "KEAMANAN"):
             response = self.post(self.payload(category=category))
 
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            self.assertEqual(response.data["category"], category)
-            self.assertIsNone(response.data["facility"])
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("sub_category", response.data)
+
+    def test_legacy_complaint_can_be_patched_without_sub_category(self):
+        # Pengaduan yang dibuat sebelum sub-kategori ada memiliki nilai kosong;
+        # selama field itu tidak dikirim ulang, update lainnya tetap valid.
+        complaint = Complaint.objects.create(
+            reporter=self.student,
+            category=Complaint.Category.KEAMANAN,
+            title="Laporan lama",
+            description="Dibuat sebelum sub-kategori diwajibkan.",
+        )
+
+        self.client.force_authenticate(self.student)
+        response = self.client.patch(
+            f"/api/complaints/{complaint.id}/",
+            {"description": "Isi diperbarui."},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["sub_category"], "")
+
+    def test_categories_endpoint_lists_sub_categories_per_category(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get("/api/complaints/categories/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_value = {item["value"]: item for item in response.data}
+
+        self.assertEqual(by_value["FASILITAS"]["sub_categories"], [])
+        self.assertIn(
+            "JADWAL_KULIAH",
+            [item["value"] for item in by_value["AKADEMIK"]["sub_categories"]],
+        )
+        self.assertEqual(
+            by_value["AKADEMIK"]["sub_categories"][0]["label"], "Jadwal kuliah"
+        )
 
     def test_legacy_complaint_without_category_defaults_to_fasilitas(self):
         # Pengaduan yang dibuat sebelum kolom category ada otomatis menjadi
@@ -770,24 +804,26 @@ class ComplaintCategoryValidationTests(TestCase):
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertEqual(response.data["priority"], Complaint.Priority.HIGH)
 
-    def test_sensitive_sub_category_rejects_image_when_created(self):
+    def test_sensitive_sub_categories_reject_image_when_created(self):
         self.client.force_authenticate(self.student)
-        response = self.client.post(
-            self.url,
-            {
-                **self.payload(
-                    category="KEAMANAN",
-                    sub_category="PELECEHAN_PERUNDUNGAN",
-                ),
-                "image": SimpleUploadedFile(
-                    "bukti.png", image_bytes(), content_type="image/png"
-                ),
-            },
-            format="multipart",
-        )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("image", response.data)
+        for sub_category in ("PENCURIAN", "PELECEHAN_PERUNDUNGAN"):
+            response = self.client.post(
+                self.url,
+                {
+                    **self.payload(
+                        category="KEAMANAN",
+                        sub_category=sub_category,
+                    ),
+                    "image": SimpleUploadedFile(
+                        "bukti.png", image_bytes(), content_type="image/png"
+                    ),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("image", response.data)
 
 
 @override_settings(MEDIA_ROOT=MEDIA_ROOT)
@@ -956,38 +992,42 @@ class ComplaintImmutableCategoryTests(TestCase):
         self.assertFalse(self.complaint.is_anonymous)
 
     def test_sensitive_report_rejects_image_on_patch_and_put(self):
-        complaint = Complaint.objects.create(
-            reporter=self.student,
-            title="Laporan sensitif",
-            description="Rincian laporan sensitif.",
-            category=Complaint.Category.KEAMANAN,
-            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
-        )
-        url = f"/api/complaints/{complaint.id}/"
-        self.client.force_authenticate(self.student)
+        for sub_category in (
+            Complaint.SubCategory.PENCURIAN,
+            Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+        ):
+            complaint = Complaint.objects.create(
+                reporter=self.student,
+                title="Laporan sensitif",
+                description="Rincian laporan sensitif.",
+                category=Complaint.Category.KEAMANAN,
+                sub_category=sub_category,
+            )
+            url = f"/api/complaints/{complaint.id}/"
+            self.client.force_authenticate(self.student)
 
-        patch_response = self.client.patch(
-            url,
-            {
-                "image": SimpleUploadedFile(
-                    "patch.png", image_bytes(), content_type="image/png"
-                )
-            },
-            format="multipart",
-        )
-        put_response = self.client.put(
-            url,
-            {
-                "title": complaint.title,
-                "description": complaint.description,
-                "image": SimpleUploadedFile(
-                    "put.png", image_bytes(), content_type="image/png"
-                ),
-            },
-            format="multipart",
-        )
+            patch_response = self.client.patch(
+                url,
+                {
+                    "image": SimpleUploadedFile(
+                        "patch.png", image_bytes(), content_type="image/png"
+                    )
+                },
+                format="multipart",
+            )
+            put_response = self.client.put(
+                url,
+                {
+                    "title": complaint.title,
+                    "description": complaint.description,
+                    "image": SimpleUploadedFile(
+                        "put.png", image_bytes(), content_type="image/png"
+                    ),
+                },
+                format="multipart",
+            )
 
-        self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("image", patch_response.data)
-        self.assertEqual(put_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("image", put_response.data)
+            self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("image", patch_response.data)
+            self.assertEqual(put_response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("image", put_response.data)

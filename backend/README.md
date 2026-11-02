@@ -72,6 +72,9 @@ mengirim `reporter`. Respons memuat `facility`, `category`, `sub_category`, `tit
 | `AKADEMIK` | Harus kosong | `JADWAL_KULIAH`, `DOSEN_TIDAK_HADIR`, `KESALAHAN_NILAI`, `KENDALA_KRS`, `PELAYANAN_AKADEMIK` |
 | `KEAMANAN` | Harus kosong | `KEHILANGAN_BARANG`, `MASALAH_PARKIR`, `PENCURIAN`, `GANGGUAN_KEAMANAN`, `PELECEHAN_PERUNDUNGAN` |
 
+Sub-kategori wajib diisi saat membuat laporan `AKADEMIK`/`KEAMANAN`. Laporan lama yang
+belum memiliki sub-kategori tetap valid saat di-update selama field itu tidak dikirim ulang.
+
 `incident_date` opsional, tetapi tidak boleh di masa depan. `incident_location` opsional.
 `PENCURIAN` dan `PELECEHAN_PERUNDUNGAN` otomatis menjadi prioritas `HIGH` saat dibuat.
 
@@ -90,7 +93,7 @@ harus menjelaskan bahwa anonimitas membatasi visibilitas dari STAFF, bukan dari 
 dari pelapor sendiri.
 
 Foto PNG/JPEG maksimal 5 MB dapat dikirim dengan `multipart/form-data`; jangan set header
-`Content-Type` manual saat memakai `FormData`. Gambar dilarang untuk
+`Content-Type` manual saat memakai `FormData`. Gambar dilarang untuk `PENCURIAN` dan
 `PELECEHAN_PERUNDUNGAN` pada create, PUT, dan PATCH. Path `image` bersifat relatif
 (`/media/...`) dan harus diubah menjadi URL backend, misalnya dengan `resolveMediaUrl()`.
 
@@ -102,11 +105,18 @@ Foto PNG/JPEG maksimal 5 MB dapat dikirim dengan `multipart/form-data`; jangan s
 ?category=KEAMANAN
 ?sub_category=PENCURIAN
 ?status=PENDING
+?priority=HIGH
 ```
 
-`GET /api/complaints/categories/` mengembalikan daftar kategori untuk dropdown
-(`[{"value": "FASILITAS", "label": "Fasilitas"}, ...]`). Path ini didaftarkan sebelum
-`<int:pk>/` agar tidak dianggap sebagai id pengaduan.
+`GET /api/complaints/categories/` mengembalikan kategori beserta sub-kategorinya untuk
+dropdown dan filter:
+
+```json
+[{"value": "FASILITAS", "label": "Fasilitas", "sub_categories": []},
+ {"value": "AKADEMIK", "label": "Akademik", "sub_categories": [{"value": "JADWAL_KULIAH", "label": "Jadwal kuliah"}, {"value": "...", "label": "..."}]}]
+```
+
+Path ini didaftarkan sebelum `<int:pk>/` agar tidak dianggap sebagai id pengaduan.
 
 Backend melakukan scoping role/ownership sebelum query parameter. Filter tidak dapat
 membuka laporan orang lain untuk STUDENT atau laporan sensitif untuk STAFF. Belum ada

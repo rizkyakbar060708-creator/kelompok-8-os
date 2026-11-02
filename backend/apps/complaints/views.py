@@ -16,8 +16,19 @@ class ComplaintCategoriesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # Setiap kategori membawa sub-kategorinya sehingga frontend bisa
+        # membangun dropdown bertingkat tanpa konstanta terpisah.
         categories = [
-            {"value": choice[0], "label": choice[1]}
+            {
+                "value": choice[0],
+                "label": choice[1],
+                "sub_categories": [
+                    # Member TextChoices adalah str, jadi sub[0] akan
+                    # menghasilkan karakter bukan value; pakai .value/.label.
+                    {"value": sub.value, "label": sub.label}
+                    for sub in Complaint.sub_categories_for(choice[0])
+                ],
+            }
             for choice in Complaint.Category.choices
         ]
         return Response(categories)
@@ -49,7 +60,7 @@ class ScopedComplaintMixin:
         else:
             scoped_queryset = queryset.filter(reporter=self.request.user)
 
-        for field in ("category", "sub_category", "status"):
+        for field in ("category", "sub_category", "status", "priority"):
             value = self.request.query_params.get(field)
             if value:
                 scoped_queryset = scoped_queryset.filter(**{field: value})
