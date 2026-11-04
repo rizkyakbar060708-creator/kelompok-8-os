@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .views import ComplaintCategoriesView, ComplaintDetailView, ComplaintListCreateView
+from .views import (
+    ComplaintCategoriesView,
+    ComplaintDetailView,
+    ComplaintListCreateView,
+    ComplaintSummaryView,
+)
 
 
 urlpatterns = [
@@ -13,6 +18,11 @@ urlpatterns = [
         "categories/",
         ComplaintCategoriesView.as_view(),
         name="complaint-categories",
+    ),
+    path(
+        "summary/",
+        ComplaintSummaryView.as_view(),
+        name="complaint-summary",
     ),
     path(
         "<int:pk>/",

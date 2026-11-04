@@ -36,6 +36,7 @@ class ComplaintSerializer(serializers.ModelSerializer):
             "incident_location",
             "incident_date",
             "is_anonymous",
+            "resolved_at",
             "created_at",
             "updated_at",
         )
@@ -82,6 +83,11 @@ class ComplaintSerializer(serializers.ModelSerializer):
             },
             "is_anonymous": {
                 "required": False,
+            },
+            "resolved_at": {
+                # Waktu penyelesaian dihitung model saat status berubah,
+                # bukan dikirim client.
+                "read_only": True,
             },
             "created_at": {
                 "read_only": True,

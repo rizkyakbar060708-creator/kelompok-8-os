@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.facilities.models import Facility
 
@@ -88,11 +89,28 @@ class Complaint(models.Model):
     incident_date = models.DateTimeField(blank=True, null=True)
     is_anonymous = models.BooleanField(default=False)
 
+    # Terisi otomatis saat status berubah ke RESOLVED, dikosongkan lagi kalau
+    # pengaduan dibuka kembali. Dasar perhitungan rata-rata waktu penyelesaian.
+    resolved_at = models.DateTimeField(blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        # resolved_at mengikuti status, bukan diisi manual: begitu status keluar
+        # dari RESOLVED (mis. dibuka kembali) stempel waktunya tidak boleh
+        # tertinggal, supaya agregasi rata-rata penyelesaian tidak menghitung
+        # pengaduan yang sebenarnya masih terbuka.
+        if self.status == self.Status.RESOLVED:
+            if self.resolved_at is None:
+                self.resolved_at = timezone.now()
+        elif self.resolved_at is not None:
+            self.resolved_at = None
+
+        super().save(*args, **kwargs)
 
     @classmethod
     def sub_categories_for(cls, category):

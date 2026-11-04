@@ -1,4 +1,9 @@
-from rest_framework import generics
+from datetime import timedelta
+
+from django.db.models import Q
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from rest_framework import exceptions, generics
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -43,10 +48,19 @@ class ScopedComplaintMixin:
 
     Staf dan admin tetap melihat seluruh pengaduan karena tugas mereka memang
     menindaklanjuti laporan orang lain.
+
+    Root queryset diambil lewat base_queryset() supaya view agregasi (summary)
+    bisa menyediakan queryset awalnya sendiri tanpa menimpa get_queryset()
+    milik mixin — kalau get_queryset() ditimpa, seluruh scoping ikut hilang.
     """
 
+    def base_queryset(self):
+        # Dipanggil oleh subclass; untuk DRF generic view, super() akan
+        # memberi self.queryset.
+        return super().get_queryset()
+
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = self.base_queryset()
 
         if is_admin(self.request.user):
             scoped_queryset = queryset
@@ -65,6 +79,41 @@ class ScopedComplaintMixin:
             if value:
                 scoped_queryset = scoped_queryset.filter(**{field: value})
 
+        # Pencarian teks: judul atau deskripsi, sesuai kebutuhan halaman
+        # daftar dan antrean. icontains cukup untuk volume data pilot.
+        search = self.request.query_params.get("search")
+        if search:
+            scoped_queryset = scoped_queryset.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+            )
+
+        # Rentang tanggal mengikuti created_at. date_from inklusif mulai pukul
+        # 00:00, date_to inklusif sampai akhir hari supaya ?date_to=2026-11-04
+        # tetap memuat pengaduan yang dibuat hari itu.
+        date_from = self.request.query_params.get("date_from")
+        if date_from:
+            parsed_from = parse_date(date_from)
+            if parsed_from is None:
+                raise exceptions.ValidationError(
+                    {"date_from": "Format tanggal harus YYYY-MM-DD."}
+                )
+            scoped_queryset = scoped_queryset.filter(
+                created_at__gte=parsed_from,
+            )
+
+        date_to = self.request.query_params.get("date_to")
+        if date_to:
+            parsed_to = parse_date(date_to)
+            if parsed_to is None:
+                raise exceptions.ValidationError(
+                    {"date_to": "Format tanggal harus YYYY-MM-DD."}
+                )
+            # DatetimeField membandingkan pukul 00:00, jadi rentangnya maju
+            # satu hari penuh untuk memasukkan seluruh isi tanggal itu.
+            scoped_queryset = scoped_queryset.filter(
+                created_at__lt=parsed_to + timedelta(days=1),
+            )
+
         return scoped_queryset
 
 
@@ -78,6 +127,197 @@ class ComplaintListCreateView(ScopedComplaintMixin, generics.ListCreateAPIView):
     # pelapor.
     def perform_create(self, serializer):
         serializer.save(reporter=self.request.user)
+
+
+class ComplaintSummaryView(ScopedComplaintMixin, APIView):
+    """Ringkasan agregat untuk dashboard, di-scope role sama dengan list.
+
+    Mahasiswa menerima agregat yang hanya menghitung pengaduannya sendiri,
+    staf ringkasan seluruh kampus (dengan laporan pelecehan tetap
+    disembunyikan, mengikuti mixin), admin seluruh kampus tanpa kecuali.
+    Frontend tidak perlu menghitung ulang agregasi dari seluruh baris.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def base_queryset(self):
+        return Complaint.objects.select_related("facility", "reporter")
+
+    def get(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+
+        scoped_rows = list(queryset.values(
+            "id",
+            "category",
+            "sub_category",
+            "status",
+            "priority",
+            "created_at",
+            "resolved_at",
+            "incident_location",
+            "facility_id",
+            "facility__name",
+        ))
+
+        # Aktivitas terbaru di-serialisasi penuh (bukan sekadar judul) supaya
+        # panel samping frontend menikmati aturan yang sama dengan list:
+        # reporter_username hanya untuk admin, reporter disembunyikan untuk
+        # laporan anonim.
+        recent_activity = ComplaintSerializer(
+            queryset.order_by("-created_at")[:10],
+            many=True,
+            context={"request": request},
+        )
+
+        result = self._aggregate(scoped_rows)
+        result["recent_activity"] = recent_activity.data
+        return Response(result)
+
+    # --- agregasi ----------------------------------------------------------
+    def _aggregate(self, rows):
+        all_categories = list(Complaint.Category.values)
+        all_statuses = list(Complaint.Status.values)
+        all_priorities = list(Complaint.Priority.values)
+
+        total = len(rows)
+
+        by_category = {key: 0 for key in all_categories}
+        by_status = {key: 0 for key in all_statuses}
+        by_priority = {key: 0 for key in all_priorities}
+        by_status_per_category = {
+            category: {key: 0 for key in all_statuses} for category in all_categories
+        }
+
+        # Tren harian 30 hari terakhir: bucket dibuat nol terlebih dahulu
+        # supaya tanggal kosong tidak melompat di chart frontend.
+        today = timezone.localdate()
+        day_offsets = range(29, -1, -1)
+        bucket_dates = [today - timedelta(days=offset) for offset in day_offsets]
+        by_day = {
+            bucket: {category: 0 for category in all_categories}
+            for bucket in bucket_dates
+        }
+
+        # Durasi penyelesaian per kategori, dalam jam.
+        resolution_hours_per_category = {
+            category: [] for category in all_categories
+        }
+
+        location_counts = {}
+
+        for row in rows:
+            category = row["category"]
+            status = row["status"]
+            priority = row["priority"]
+            created_at = row["created_at"]
+
+            by_category[category] = by_category.get(category, 0) + 1
+            by_status[status] = by_status.get(status, 0) + 1
+            by_priority[priority] = by_priority.get(priority, 0) + 1
+            by_status_per_category.setdefault(
+                category, {key: 0 for key in all_statuses}
+            )[status] = by_status_per_category[category].get(status, 0) + 1
+
+            if created_at is not None:
+                day = timezone.localtime(created_at).date()
+
+                if day in by_day:
+                    by_day[day][category] = by_day[day].get(category, 0) + 1
+
+            if row["resolved_at"] is not None and created_at is not None:
+                elapsed_days = (
+                    row["resolved_at"] - created_at
+                ).total_seconds() / 3600
+                resolution_hours_per_category.setdefault(
+                    category, []
+                ).append(elapsed_days)
+
+            label = self._location_label(row)
+
+            if label:
+                bucket = location_counts.get(label["label"])
+                if bucket is None:
+                    bucket = dict(label)
+                    bucket["count"] = 0
+                    # Key-nya teks label, bukan dict, supaya agregasi aman.
+                    location_counts[label["label"]] = bucket
+
+                bucket["count"] += 1
+
+        top_locations = sorted(
+            location_counts.values(),
+            key=lambda item: (-item["count"], item["label"]),
+        )[:5]
+
+        all_hours = [
+            hours
+            for hours in resolution_hours_per_category.values()
+            for hours in hours
+        ]
+
+        avg_resolution_hours = {
+            "overall": round(sum(all_hours) / len(all_hours), 1)
+            if all_hours
+            else None,
+            "by_category": {
+                category: round(sum(hours) / len(hours), 1) if hours else None
+                for category, hours in resolution_hours_per_category.items()
+            },
+        }
+
+        resolution_rate = {
+            "overall": self._rate(by_status.get(Complaint.Status.RESOLVED, 0), total),
+            "by_category": {
+                category: self._rate(
+                    by_status_per_category.get(category, {}).get(
+                        Complaint.Status.RESOLVED, 0
+                    ),
+                    by_category.get(category, 0),
+                )
+                for category in all_categories
+            },
+        }
+
+        trend_30d = [
+            {
+                "date": bucket.isoformat(),
+                **by_day[bucket],
+            }
+            for bucket in bucket_dates
+        ]
+
+        return {
+            "total": total,
+            "by_category": by_category,
+            "by_status": by_status,
+            "by_status_per_category": by_status_per_category,
+            "by_priority": by_priority,
+            "trend_30d": trend_30d,
+            "top_locations": top_locations,
+            "avg_resolution_hours": avg_resolution_hours,
+            "resolution_rate": resolution_rate,
+        }
+
+    @staticmethod
+    def _rate(resolved, total):
+        if total == 0:
+            return 0.0
+
+        return round((resolved / total) * 100, 1)
+
+    @staticmethod
+    def _location_label(row):
+        """Label top-lokasi: nama fasilitas, atau lokasi kejadian apabila
+        pengaduan datang dari kategori yang tidak terkait fasilitas."""
+        if row["facility_id"] is not None:
+            return {"label": row["facility__name"] or "-", "kind": "facility"}
+
+        text = (row["incident_location"] or row["sub_category"] or "").strip()
+
+        if not text:
+            return None
+
+        return {"label": text, "kind": "location"}
 
 
 class ComplaintDetailView(

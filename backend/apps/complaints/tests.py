@@ -1053,3 +1053,293 @@ class ComplaintImmutableCategoryTests(TestCase):
             self.assertIn("image", patch_response.data)
             self.assertEqual(put_response.status_code, status.HTTP_400_BAD_REQUEST)
             self.assertIn("image", put_response.data)
+
+
+class ComplaintResolvedAtTests(TestCase):
+    """Tombol waktu penyelesaian: terisi saat status menyentuh RESOLVED,
+    dikosongkan saat dibuka kembali."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username="student_r", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.staff = User.objects.create_user(
+            username="staff_r", password="Passw0rd!aaa", role=User.Role.STAFF
+        )
+        self.facility = Facility.objects.create(
+            name="Lampu Koridor B2",
+            location="Gedung B - Lantai 2",
+        )
+        self.complaint = Complaint.objects.create(
+            reporter=self.student,
+            facility=self.facility,
+            title="Lampu koridor mati",
+            description="Koridor lantai 2 gelap total.",
+        )
+
+    def detail_url(self):
+        return f"/api/complaints/{self.complaint.id}/"
+
+    def test_resolved_at_is_empty_before_resolution(self):
+        self.assertIsNone(self.complaint.resolved_at)
+
+    def test_staff_changing_status_to_resolved_stamps_resolved_at(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.patch(
+            self.detail_url(),
+            {"status": Complaint.Status.RESOLVED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(response.data["resolved_at"])
+
+        self.complaint.refresh_from_db()
+        difference = timezone.now() - self.complaint.resolved_at
+        self.assertLess(difference, timedelta(seconds=5))
+
+    def test_reopening_a_resolved_complaint_clears_resolved_at(self):
+        self.complaint.status = Complaint.Status.RESOLVED
+        self.complaint.save()
+        self.assertIsNotNone(self.complaint.resolved_at)
+
+        # Admin membuka kembali, misalnya banding diterima.
+        self.complaint.status = Complaint.Status.IN_PROGRESS
+        self.complaint.save()
+
+        self.assertIsNone(self.complaint.resolved_at)
+
+
+class ComplaintFilterTests(TestCase):
+    """Filter query param list: search, date_from, date_to, category, priority."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.list_url = "/api/complaints/"
+
+        self.student = User.objects.create_user(
+            username="student_f", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.facility = Facility.objects.create(
+            name="Proyektor Ruang A",
+            location="Gedung B - Lantai 1",
+        )
+
+        self.ac = Complaint.objects.create(
+            reporter=self.student,
+            facility=self.facility,
+            title="AC bocor",
+            description="Air menetes di bawah unit.",
+        )
+        self.wartel = Complaint.objects.create(
+            reporter=self.student,
+            category=Complaint.Category.AKADEMIK,
+            sub_category=Complaint.SubCategory.KENDALA_KRS,
+            title="KRS gagal",
+            description="Mata kuliah tidak muncul.",
+        )
+
+    def test_search_matches_title_or_description(self):
+        self.client.force_authenticate(self.student)
+
+        response = self.client.get(self.list_url, {"search": "ac"})
+        self._assert_ids(response, {self.ac.id})
+
+        response = self.client.get(self.list_url, {"search": "mata kuliah"})
+        self._assert_ids(response, {self.wartel.id})
+
+    def test_category_and_priority_filters(self):
+        self.client.force_authenticate(self.student)
+
+        response = self.client.get(
+            self.list_url, {"category": Complaint.Category.AKADEMIK}
+        )
+        self._assert_ids(response, {self.wartel.id})
+
+        response = self.client.get(self.list_url, {"priority": "LOW"})
+        self._assert_ids(response, set())
+
+    def test_date_range_filters_cover_created_dates(self):
+        self.client.force_authenticate(self.student)
+
+        today = timezone.localdate()
+        response = self.client.get(
+            self.list_url,
+            {
+                "date_from": (today - timedelta(days=1)).isoformat(),
+                "date_to": today.isoformat(),
+            },
+        )
+        self._assert_ids(response, {self.ac.id, self.wartel.id})
+
+        response = self.client.get(
+            self.list_url,
+            {"date_to": (today - timedelta(days=1)).isoformat()},
+        )
+        self._assert_ids(response, set())
+
+    def test_invalid_date_format_returns_400(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.list_url, {"date_from": "04/11/2026"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def _assert_ids(self, response, expected):
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {item["id"] for item in response.data},
+            expected,
+        )
+
+
+class ComplaintSummaryTests(TestCase):
+    """GET /api/complaints/summary/: agregat ter-scope role laporan."""
+    maxDiff = None
+
+    def setUp(self):
+        self.client = APIClient()
+        self.summary_url = "/api/complaints/summary/"
+
+        self.student = User.objects.create_user(
+            username="student_s", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.other_student = User.objects.create_user(
+            username="student_s2", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.staff = User.objects.create_user(
+            username="staff_s", password="Passw0rd!aaa", role=User.Role.STAFF
+        )
+        self.admin = User.objects.create_user(
+            username="admin_s", password="Passw0rd!aaa", role=User.Role.ADMIN
+        )
+
+        self.facility = Facility.objects.create(
+            name="Tandon Air",
+            location="Gedung C",
+        )
+
+        self.own_facility = self._create(
+            self.student,
+            category=Complaint.Category.FASILITAS,
+            facility=self.facility,
+            status=Complaint.Status.RESOLVED,
+        )
+        self.own_academic = self._create(
+            self.student,
+            category=Complaint.Category.AKADEMIK,
+            sub_category=Complaint.SubCategory.KENDALA_KRS,
+            incident_location="Bagian Akademik",
+        )
+        self.foreign = self._create(
+            self.other_student,
+            category=Complaint.Category.KEAMANAN,
+            sub_category=Complaint.SubCategory.GANGGUAN_KEAMANAN,
+            incident_location="Parkir timur",
+        )
+
+    def _create(self, reporter, **fields):
+        defaults = {
+            "title": "Laporan uji",
+            "description": "Deskripsi uji.",
+        }
+        defaults.update(fields)
+
+        return Complaint.objects.create(reporter=reporter, **defaults)
+
+    def test_anonymous_cannot_read_summary(self):
+        response = self.client.get(self.summary_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_student_summary_scoped_to_own_complaints(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total"], 2)
+        self.assertEqual(response.data["by_category"]["FASILITAS"], 1)
+        self.assertEqual(response.data["by_category"]["AKADEMIK"], 1)
+        self.assertEqual(response.data["by_category"]["KEAMANAN"], 0)
+        self.assertEqual(
+            response.data["by_status"]["RESOLVED"],
+            1,
+        )
+        self.assertEqual(response.data["resolution_rate"]["overall"], 50.0)
+
+    def test_admin_summary_counts_everything_and_examples_aggregate(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total"], 3)
+        self.assertEqual(response.data["by_category"]["KEAMANAN"], 1)
+        self.assertEqual(response.data["by_priority"]["MEDIUM"], 3)
+
+        # Top lokasi: Tandon Air punya 1, Parkir timur 1, Bagian Akademik 1.
+        labels = {item["label"] for item in response.data["top_locations"]}
+        self.assertTrue(
+            {"Tandon Air", "Parkir timur"}.issubset(labels),
+            response.data["top_locations"],
+        )
+
+    def test_trend_contains_30_daily_buckets_with_newest_last(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+
+        trend = response.data["trend_30d"]
+
+        self.assertEqual(len(trend), 30)
+        self.assertEqual(
+            trend[-1]["date"],
+            timezone.localdate().isoformat(),
+        )
+        # Hari ini punya 3 pengaduan yang dibuat setUp, semuanya hari ini.
+        self.assertEqual(trend[-1]["FASILITAS"], 1)
+        self.assertEqual(trend[-1]["AKADEMIK"], 1)
+        self.assertEqual(trend[-1]["KEAMANAN"], 1)
+
+    def test_resolved_duration_lands_in_avg_resolution(self):
+        self.own_facility.resolved_at = self.own_facility.created_at + timedelta(
+            hours=24
+        )
+        self.own_facility.save()
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(
+            response.data["avg_resolution_hours"]["by_category"]["FASILITAS"],
+            24.0,
+        )
+        self.assertIsNone(
+            response.data["avg_resolution_hours"]["by_category"]["AKADEMIK"]
+        )
+
+    def test_recent_activity_orders_newest_first_and_respects_privacy(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.summary_url)
+
+        activity = response.data["recent_activity"]
+        self.assertEqual(len(activity), 2)
+        self.assertEqual(activity[0]["id"], self.own_academic.id)
+        # Non-admin tidak pernah menerima nama pelapor, dari endpoint mana pun.
+        self.assertIsNone(activity[0]["reporter_username"])
+
+    def test_staff_excludes_sensitive_reports_from_summary(self):
+        self._create(
+            self.student,
+            category=Complaint.Category.KEAMANAN,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+            incident_location="Lorong lama",
+        )
+
+        self.client.force_authenticate(self.staff)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(response.data["total"], 3)
+        labels = {item["label"] for item in response.data["top_locations"]}
+        self.assertNotIn("Lorong lama", labels)
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+        self.assertEqual(response.data["total"], 4)
