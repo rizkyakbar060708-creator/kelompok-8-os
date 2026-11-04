@@ -1057,6 +1057,54 @@ Responsivitas: tombol aksi utama `w-full sm:w-auto`, tabel tidak menimbulkan scr
 horizontal, dropdown tidak terpotong oleh container tabel, dan modal menurun ke
 lebar penuh pada layar kecil dengan padding `1rem` di sisi overlay.
 
+### 8.9 Pola dashboard monitoring (AdminDashboard & Dashboard versi baru)
+
+Ditambahkan bersama kategori KEAMANAN/FASILITAS/AKADEMIK dan endpoint
+`GET /api/complaints/summary/`. Struktur AdminDashboard dari atas ke bawah:
+
+```
+.max-w-7xl space-y-6
+├── A. header  sapaan (greeting + username) + page-title + tanggal id-ID panjang
+│             + grup pill rentang (7 hari / 30 hari / 90 hari / Semua, aria-pressed)
+│             + tombol "Muat ulang" (btn-secondary, RefreshCw berputar saat loading)
+├── B. KPI global  5 kartu (Total/Menunggu/Diproses/Selesai/Ditolak) grid
+│             sm:grid-cols-2 xl:grid-cols-5, memakai KpiCard dengan delta
+├── C. ringkasan kategori  3 CategoryCard (ikon + total + status mini-bar +
+│             sparkline 7 hari); klik kartu = ganti tab kategori
+├── C2. grafik utama  dua grid xl:
+│   ├── CategoryRing (donut kategori, total di tengah, legenda %) + TrendLines
+│   └── StatusStackedBars (status × kategori) + TopLocationBars (5 lokasi)
+└── D/E. tab kategori  tablist Semua|Keamanan|Fasilitas|Akademik →
+    ├── kiri:  4 TabMetricCard status + ComplaintTablePanel (search backend
+    │           debounce 350ms, filter status/prioritas, urut
+    │           Terbaru/Prioritas/Status, paginasi 8/halaman client-side)
+    └── kanan: AttentionPanel (merah) + panel Aktivitas terbaru
+```
+
+Aturan penting pola ini:
+
+- **Satu sumber angka.** Seluruh baris di-fetch sekali lewat `getComplaints()`,
+  lalu `inWindow(rows, range)` mengiris jendela waktu; kartu, chart, tab, dan
+  panel membaca dari baris yang sama. `range === null` berarti "Semua".
+- **Delta KPI.** `periodDelta` membandingkan jendela ini vs jendela sepanjang
+  sama sebelumnya; `formatDelta` menghasilkan `+n`, `−n`, atau `+n baru`
+  bila periode sebelumnya kosong. **Warna delta = arah baik/buruk metrik, bukan
+  tanda angka**: "Selesai" naik = emerald (baik), "Menunggu" naik = rose
+  (buruk), "Total", "Diproses", "Ditolak" = slate (netral). Rentang "Semua"
+  tidak menampilkan delta (tidak ada pembanding yang jujur).
+- Tab tabel memakai filter backend (`?category=`, `?status=`, `?priority=`,
+  `?search=`) dengan debounce 350 ms; urutan dan paginasi (8/halaman) dilakukan
+  di client karena endpoint list belum dipaginasi.
+- **AttentionPanel**: berlatar merah lembut (`border-rose-200/70 bg-rose-50/60`),
+  berisi pengaduan `HIGH` atau yang belum ditangani > `ATTENTION_AGE_DAYS`
+  (3 hari) — aturan satu angka ini di `complaintStats.needsAttention`. Alasan
+  masing-masing baris ditulis eksplisit lewat `attentionReason`, bukan hanya
+  isyarat warna.
+- Dashboard mahasiswa (`pages/user/Dashboard.tsx`) adalah versi ringan pola ini:
+  5 KPI tanpa delta, 3 CategoryCard (klik → `/complaints`), TrendLines pribadi
+  14 hari, daftar terbaru 5 item, dan panel dorongan "buat laporan". Rentangnya
+  tetap 30 hari tanpa kontrol rentang.
+
 ---
 
 ## 9. Status Pengaduan & Pemetaan Tampilannya
@@ -1121,6 +1169,39 @@ Gaya pil: `glass-pill gap-1.5 px-3 py-1.5 text-xs font-semibold` + ikon
 5. Urutan warna: amber → blue → emerald → red. Status baru harus punya warna
    semantiknya sendiri, bukan warna yang sudah terpakai.
 6. `ComplaintCard.tsx`: salin union tipe `Status` (atau, lebih baik, ekspor dari service).
+
+### 9.5 Kategori pengaduan (`utils/categoryConfig.ts`)
+
+Ditambahkan bersama dashboard monitoring. Inspirasi turunan tipe sama dengan
+`statusConfig`: union kategori diekspor dari `Complaint["category"]`, bukan
+ditulis ulang.
+
+`CATEGORY_CONFIG` per kategori:
+
+| Kategori | Label | Chip (`chipClassName`) | Warna chart (`chartColor`) |
+| --- | --- | --- | --- |
+| KEAMANAN | Keamanan | `bg-amber-100 text-amber-700` | `#d97706` (amber-700) |
+| KEAMANAN | Keamanan | `bg-amber-100 text-amber-700` | `#d97706` (amber-700) |
+| FASILITAS | Fasilitas | `bg-indigo-100 text-indigo-700` | `#4f46e5` (indigo-600) |
+| AKADEMIK | Akademik | `bg-emerald-100 text-emerald-700` | `#059669` (emerald-700) |
+
+Aturan yang menyertainya:
+
+- **Warna kategori hanya untuk kategori.** Aturan §9.1 (warna status hanya
+  untuk status) diperluas ke kategori; jangan menyulap warna kategori untuk
+  hal lain.
+- **Benturan serupa yang disengaja:** `KEAMANAN` memakai amber-700 (`#d97706`)
+  dan status `PENDING` amber-500 (`#f59e0b`). Karena keberadaan donut/stacked
+  yang menautkan legendanya ke warna hex dan legenda status tidak pernah
+  digambar di chart yang sama dengan legenda kategori, dua warna ini dianggap
+  cukup terpisah. Kalau suatu saat keduanya muncul di satu chart, salah satunya
+  wajib dipindah.
+- Ikon: `ShieldCheck` (KEAMANAN), `Building2` (FASILITAS), `GraduationCap`
+  (AKADEMIK), dipusatkan di `CATEGORY_ICONS` `CategoryCard.tsx`.
+- Chart kategori (garis, donut, sparkline) selalu membaca `chartColor`, dan
+  badge di seluruh halaman membaca `chipClassName`, jadi menambah kategori
+  berarti menambah 1 entri `CATEGORY_CONFIG`, nilai enum backend, dan entri
+  `SUB_CATEGORY_LABELS` bila perlu.
 
 ---
 

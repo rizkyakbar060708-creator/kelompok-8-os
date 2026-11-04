@@ -1,49 +1,94 @@
 import {
-  ArrowUpRight,
-  BarChart3,
   CheckCircle2,
   CircleAlert,
   Clock3,
   FileText,
-  Inbox,
   LoaderCircle,
-  PencilRuler,
-  ShieldCheck,
-  TrendingUp,
-  Users,
+  RefreshCw,
   XCircle,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 
+import AttentionPanel from "../../components/dashboard/AttentionPanel"
+import CategoryCard from "../../components/dashboard/CategoryCard"
+import ComplaintTablePanel from "../../components/dashboard/ComplaintTablePanel"
+import KpiCard from "../../components/dashboard/KpiCard"
+import CategoryRing from "../../components/charts/CategoryRing"
+import StatusStackedBars from "../../components/charts/StatusStackedBars"
+import TopLocationBars from "../../components/charts/TopLocationBars"
+import TrendLines from "../../components/charts/TrendLines"
 import Card from "../../components/ui/Card"
 import StatusBadge from "../../components/ui/StatusBadge"
-import StatusDonut from "../../components/charts/StatusDonut"
+import type { ComplaintCategoryName } from "../../services/complaintService"
 import { getComplaints } from "../../services/complaintService"
-import { getFacilities } from "../../services/facilityService"
+import { getFacilities, type Facility } from "../../services/facilityService"
+import { useAuth } from "../../contexts/AuthContext"
+import { isAdmin } from "../../utils/roles"
+import { CATEGORIES, CATEGORY_CONFIG } from "../../utils/categoryConfig"
 import {
-  buildStats,
-  formatDate,
-  formatRate,
+  ageLabel,
+  avgResolutionHours,
+  buildCategoryStats,
+  dailyTrend,
+  formatDelta,
+  formatNumber,
+  formatResolutionHours,
+  inWindow,
   joinFacilities,
-  oldestPendingAgeDays,
-  pendingQueue,
-  statusSlices,
+  periodDelta,
+  topSituations,
   type ComplaintRow,
+  type PeriodDelta,
 } from "../../utils/complaintStats"
-import { STATUS_CONFIG } from "../../utils/statusConfig"
+
+import {
+  COMPLAINT_STATUSES,
+  STATUS_CONFIG,
+} from "../../utils/statusConfig"
 
 const MAX_RECENT = 6
-const MAX_QUEUE = 5
+
+type RangeDays = 7 | 30 | 90 | null
+
+type TabName = "ALL" | ComplaintCategoryName
+
+const RANGE_OPTIONS: Array<{ value: RangeDays; label: string }> = [
+  { value: 7, label: "7 hari" },
+  { value: 30, label: "30 hari" },
+  { value: 90, label: "90 hari" },
+  { value: null, label: "Semua" },
+]
+
+const TABS: Array<{ value: TabName; label: string }> = [
+  { value: "ALL", label: "Semua" },
+  ...CATEGORIES.map((category) => ({
+    value: category as TabName,
+    label: CATEGORY_CONFIG[category].label,
+  })),
+]
+
+function greeting(now: Date): string {
+  const hour = now.getHours()
+
+  if (hour < 11) return "Selamat pagi"
+  if (hour < 15) return "Selamat siang"
+  if (hour < 19) return "Selamat sore"
+  return "Selamat malam"
+}
+
+// Arah baik/buruk per metrik: delta yang naik tidak selalu kabar baik, jadi
+// warna diputuskan di sini, bukan di komponen KpiCard.
+type DeltaSentiment = "good" | "bad" | "neutral"
 
 function AdminDashboard() {
+  const { user } = useAuth()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
+  const [facilities, setFacilities] = useState<Facility[]>([])
   const [error, setError] = useState("")
-  // true kalau backend ternyata membalas amplop paginasi. Endpoint sekarang
-  // tidak dikonfigurasi paginasi, tapi kalau berubah angka di bawah hanya
-  // mewakili satu halaman dan label keterbatasan harus muncul.
-  const [isPaginated, setIsPaginated] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
+  const [range, setRange] = useState<RangeDays>(30)
+  const [activeTab, setActiveTab] = useState<TabName>("ALL")
 
   useEffect(() => {
     let active = true
@@ -60,7 +105,7 @@ function AdminDashboard() {
         }
 
         setRows(joinFacilities(complaints.items, facilities.items))
-        setIsPaginated(complaints.isPaginated)
+        setFacilities(facilities.items)
         setError("")
       } catch {
         if (!active) {
@@ -79,109 +124,248 @@ function AdminDashboard() {
     }
   }, [retryKey])
 
-  const complaints = rows ?? []
-  const stats = buildStats(complaints)
-  const slices = statusSlices(complaints)
-  const recent = complaints.slice(0, MAX_RECENT)
-  const queue = pendingQueue(complaints).slice(0, MAX_QUEUE)
-  const queueAge = oldestPendingAgeDays(complaints)
   const isLoading = rows === null
+  const complaints = useMemo(() => rows ?? [], [rows])
 
-  // Kelima metrik dihitung dari respons API lewat buildStats, tidak ada angka
-  // yang ditulis manual di file ini.
-  const metrics = [
+  // Baris dalam jendela waktu terpilih; seluruh kartu dan chart di bawah
+  // membaca dari sini supaya angka antarpanel konsisten.
+  const windowRows = useMemo(
+    () => inWindow(complaints, range),
+    [complaints, range],
+  )
+
+  // Delta = jendela ini vs jendela sepanjang sama sebelum itu, dihitung dari
+  // SELURUH baris (bukan windowRows) supaya perbandingannya adil.
+  const deltas = useMemo(() => {
+    if (range === null) {
+      return new Map<string, PeriodDelta>()
+    }
+
+    const countDelta = (predicate: (row: ComplaintRow) => boolean) =>
+      periodDelta(complaints.filter(predicate), range)
+
+    return new Map<string, PeriodDelta>([
+      ["total", periodDelta(complaints, range)],
+      ["pending", countDelta((row) => row.status === "PENDING")],
+      ["inProgress", countDelta((row) => row.status === "IN_PROGRESS")],
+      ["resolved", countDelta((row) => row.status === "RESOLVED")],
+      ["rejected", countDelta((row) => row.status === "REJECTED")],
+    ])
+  }, [complaints, range])
+
+  const countByStatus = (status: ComplaintRow["status"]) =>
+    windowRows.filter((row) => row.status === status).length
+
+  const pendingCount = countByStatus("PENDING")
+  const inProgressCount = countByStatus("IN_PROGRESS")
+  const resolvedCount = countByStatus("RESOLVED")
+  const rejectedCount = countByStatus("REJECTED")
+
+  const avgResolution = avgResolutionHours(windowRows)
+
+  const metrics: Array<{
+    key: string
+    label: string
+    value: string
+    detail: string
+    icon: typeof FileText
+    orb: string
+    tone: string
+    href: string
+    sentiment: DeltaSentiment
+  }> = [
     {
+      key: "total",
       label: "Total pengaduan",
-      value: stats.total,
-      detail: "Seluruh pelapor",
+      value: formatNumber(windowRows.length),
+      detail: range === null ? "Tanpa batas waktu" : `Dalam ${range} hari terakhir`,
       icon: FileText,
       orb: "bg-sky-400/25",
       tone: "border-sky-200 bg-sky-50/90 text-sky-700",
       href: "/complaints",
+      sentiment: "neutral",
     },
     {
+      key: "pending",
       label: "Menunggu",
-      value: stats.pending,
+      value: formatNumber(pendingCount),
       detail: "Belum ditindaklanjuti",
       icon: Clock3,
       orb: "bg-amber-300/25",
       tone: "border-amber-200 bg-amber-50/90 text-amber-700",
       href: "/complaints?status=PENDING",
+      sentiment: "bad",
     },
     {
+      key: "inProgress",
       label: "Diproses",
-      value: stats.inProgress,
+      value: formatNumber(inProgressCount),
       detail: "Sedang dikerjakan",
-      icon: TrendingUp,
+      icon: LoaderCircle,
       orb: "bg-blue-400/25",
       tone: "border-blue-200 bg-blue-50/90 text-blue-700",
       href: "/complaints?status=IN_PROGRESS",
+      sentiment: "neutral",
     },
     {
+      key: "resolved",
       label: "Selesai",
-      value: stats.resolved,
-      detail: `${formatRate(stats.resolutionRate)} terselesaikan`,
+      value: formatNumber(resolvedCount),
+      detail:
+        avgResolution === null
+          ? "Belum ada penyelesaian"
+          : `Rata-rata ${formatResolutionHours(avgResolution)}`,
       icon: CheckCircle2,
       orb: "bg-emerald-300/25",
       tone: "border-emerald-200 bg-emerald-50/90 text-emerald-700",
       href: "/complaints?status=RESOLVED",
+      sentiment: "good",
     },
     {
+      key: "rejected",
       label: "Ditolak",
-      value: stats.rejected,
+      value: formatNumber(rejectedCount),
       detail: "Perlu tinjauan ulang",
       icon: XCircle,
       orb: "bg-rose-300/25",
       tone: "border-rose-200 bg-rose-50/90 text-rose-700",
       href: "/complaints?status=REJECTED",
+      sentiment: "neutral",
     },
   ]
 
-  // Hanya pintasan yang benar-benar punya route dan endpoint pendukung. "Kelola
-  // Pengguna" sengaja tidak ada: backend belum punya endpoint daftar maupun
-  // ubah role, jadi tautan ke halaman yang tidak ada hanya jadi janji palsu.
-  const shortcuts = [
-    {
-      label: "Semua Pengaduan",
-      description: "Daftar lengkap dengan filter status dan prioritas",
-      href: "/complaints",
-      icon: FileText,
-    },
-    {
-      label: "Kelola Fasilitas",
-      description: "Tambah dan ubah data fasilitas",
-      href: "/admin/facilities",
-      icon: PencilRuler,
-    },
-    {
-      label: "Statistik & Laporan",
-      description: "Distribusi, antrean, dan beban per fasilitas",
-      href: "/admin/reports",
-      icon: BarChart3,
-    },
-    {
-      label: "Kelola Pengguna",
-      description: "Lihat semua pengguna, ubah peran, dan atur ulang password",
-      href: "/admin/users",
-      icon: Users,
-    },
-  ]
+  const categoryStats = useMemo(
+    () => buildCategoryStats(windowRows),
+    [windowRows],
+  )
+
+  // Tren harian tiga garis: satu bucket per hari di jendela terpilih.
+  const trendData = useMemo(() => {
+    const days = range ?? 30
+    const perCategory = CATEGORIES.map((category) => {
+      const points = dailyTrend(
+        windowRows.filter((row) => row.category === category),
+        days,
+      )
+
+      return { category, points }
+    })
+
+    return perCategory[0].points.map((point, index) => ({
+      date: point.date,
+      label: point.label,
+      KEAMANAN: perCategory[0].points[index].count,
+      FASILITAS: perCategory[1].points[index].count,
+      AKADEMIK: perCategory[2].points[index].count,
+    }))
+  }, [windowRows, range])
+
+  const stackedData = useMemo(
+    () =>
+      CATEGORIES.map((category) => {
+        const rows = windowRows.filter((row) => row.category === category)
+
+        return {
+          category,
+          ...Object.fromEntries(
+            COMPLAINT_STATUSES.map((status) => [
+              status,
+              rows.filter((row) => row.status === status).length,
+            ]),
+          ),
+        }
+      }),
+    [windowRows],
+  )
+
+  const topLocations = useMemo(
+    () => topSituations(windowRows, 5),
+    [windowRows],
+  )
+
+  // Aktivitas terbaru; laporan anonim tetap tampil, hanya pelapornya yang
+  // disembunyikan (aturan privasi endpoint list).
+  const recent = useMemo(
+    () =>
+      [...windowRows]
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        )
+        .slice(0, MAX_RECENT),
+    [windowRows],
+  )
+
+  const tabCategory = activeTab === "ALL" ? null : activeTab
+  const tabRows = useMemo(
+    () =>
+      windowRows.filter(
+        (row) => tabCategory === null || row.category === tabCategory,
+      ),
+    [windowRows, tabCategory],
+  )
+
+  const isReporterVisible = isAdmin(user?.role)
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      {/* A. Header: sapaan, tanggal, filter rentang, refresh */}
+      <section className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
         <div>
           <p className="eyebrow mb-2">Panel administrator</p>
-          <h1 className="page-title">Dashboard Admin</h1>
+          <h1 className="page-title">
+            {greeting(new Date())}
+            {user?.username ? `, ${user.username}` : ""}!
+          </h1>
           <p className="page-subtitle">
-            Pantau seluruh pengaduan fasilitas kampus.
+            Ringkasan pengaduan kampus,{" "}
+            {new Date().toLocaleDateString("id-ID", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+            .
           </p>
         </div>
 
-        <Link to="/complaints" className="btn-primary w-full sm:w-auto">
-          <ShieldCheck size={18} />
-          Kelola Pengaduan
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="flex flex-wrap items-center gap-1.5"
+            role="group"
+            aria-label="Rentang waktu"
+          >
+            {RANGE_OPTIONS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => setRange(option.value)}
+                aria-pressed={range === option.value}
+                className={`glass-pill border-white/70 px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  range === option.value
+                    ? "bg-indigo-500/90 text-white"
+                    : "bg-white/70 text-slate-600 hover:bg-white"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setRetryKey((key) => key + 1)}
+            disabled={isLoading}
+            className="btn-secondary"
+          >
+            <RefreshCw
+              size={16}
+              className={isLoading ? "animate-spin" : undefined}
+              aria-hidden="true"
+            />
+            Muat ulang
+          </button>
+        </div>
       </section>
 
       {error ? (
@@ -201,340 +385,293 @@ function AdminDashboard() {
         </div>
       ) : null}
 
-      {isPaginated && (
-        <p
-          role="status"
-          className="glass-panel rounded-2xl px-4 py-3 text-xs leading-5 text-slate-600"
-        >
-          Backend kini membalas daftar dalam bentuk halaman. Angka di halaman ini
-          hanya menghitung baris yang diterima pada halaman pertama.
-        </p>
-      )}
-
+      {/* B. KPI global dengan delta vs periode sebelumnya */}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => {
-          const Icon = metric.icon
+          const delta = deltas.get(metric.key)
+          const text = delta ? formatDelta(delta) : null
 
           return (
-            <Link
-              key={metric.label}
-              to={metric.href}
-              className="focus-visible:outline-indigo-500"
-            >
-              <Card className="group relative h-full overflow-hidden">
-                <span
-                  className={`orb -right-9 -top-9 h-28 w-28 ${metric.orb} transition-transform duration-500 ease-out group-hover:scale-125`}
-                />
-
-                <div className="relative flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-600">
-                      {metric.label}
-                    </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-                      {isLoading ? "—" : metric.value}
-                    </p>
-                    <p className="mt-2 text-xs font-medium text-slate-500">
-                      {isLoading ? "Memuat..." : metric.detail}
-                    </p>
-                  </div>
-
-                  <span className={`glass-chip h-11 w-11 shrink-0 ${metric.tone}`}>
-                    <Icon size={20} />
-                  </span>
-                </div>
-              </Card>
-            </Link>
+            <KpiCard
+              key={metric.key}
+              label={metric.label}
+              value={metric.value}
+              detail={metric.detail}
+              icon={metric.icon}
+              orb={metric.orb}
+              chipTone={metric.tone}
+              href={metric.href}
+              loading={isLoading}
+              delta={
+                range === null
+                  ? null
+                  : {
+                      text,
+                      tone: metric.sentiment,
+                      windowLabel: delta && delta.previous > 0
+                        ? `vs ${range} hari sebelumnya`
+                        : runtimeDeltaLabel(delta, range),
+                    }
+              }
+            />
           )
         })}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[0.85fr_1.55fr]">
+      {/* C. Ringkasan per kategori (kartu + sparkline) */}
+      <section className="grid gap-4 md:grid-cols-3">
+        {CATEGORIES.map((category) => (
+          <CategoryCard
+            key={category}
+            stat={categoryStats[category]}
+            active={activeTab === category}
+            onSelect={() => {
+              setActiveTab(activeTab === category ? "ALL" : category)
+            }}
+          />
+        ))}
+      </section>
+
+      {/* C2. Grafik utama: donut kategori, tren harian, stacked status, top-5 */}
+      <section className="grid gap-6 xl:grid-cols-[1fr_1.5fr]">
         <Card className="relative overflow-hidden">
-          <span className="orb -right-10 -top-10 h-36 w-36 bg-violet-400/20" />
+          <span className="orb -right-9 -top-9 h-32 w-32 bg-violet-400/20" />
 
           <div className="relative">
             <h2 className="text-base font-semibold tracking-tight text-slate-900">
-              Distribusi status
+              Komposisi kategori
             </h2>
-
             <p className="mt-1 text-xs text-slate-500">
-              Porsi pengaduan menurut status saat ini.
+              Proporsi pengaduan per kategori pada rentang ini.
             </p>
 
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-500">
-                <LoaderCircle size={26} className="animate-spin" />
-                <p className="text-sm">Memuat data...</p>
-              </div>
-            ) : stats.total === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                <span className="glass-chip h-12 w-12 text-slate-500">
-                  <BarChart3 size={20} />
-                </span>
-                <p className="text-sm font-semibold text-slate-800">
-                  Belum ada data untuk digambar
-                </p>
-                <p className="max-w-xs text-xs leading-5 text-slate-500">
-                  Distribusi status muncul setelah ada pengaduan masuk.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-5 flex flex-col items-center gap-6 sm:flex-row">
-                <StatusDonut
-                  slices={slices}
-                  total={stats.total}
-                  caption="Total"
-                />
-
-                <ul className="w-full space-y-2.5">
-                  {slices.map((slice) => (
-                    <li
-                      key={slice.status}
-                      className="flex items-center gap-2.5 text-sm"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{
-                          backgroundColor:
-                            STATUS_CONFIG[slice.status].chartColor,
-                        }}
-                      />
-                      <span className="text-slate-600">
-                        {STATUS_CONFIG[slice.status].label}
-                      </span>
-                      <span className="ml-auto font-semibold tabular-nums text-slate-900">
-                        {slice.count}
-                      </span>
-                      <span className="w-14 shrink-0 text-right text-xs tabular-nums text-slate-500">
-                        {formatRate((slice.count / stats.total) * 100)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <div className="mt-5">
+              <CategoryRing
+                perCategory={{
+                  KEAMANAN: categoryStats.KEAMANAN.total,
+                  FASILITAS: categoryStats.FASILITAS.total,
+                  AKADEMIK: categoryStats.AKADEMIK.total,
+                }}
+                total={windowRows.length}
+              />
+            </div>
           </div>
         </Card>
 
         <Card className="relative overflow-hidden">
-          <span className="orb -bottom-14 -right-12 h-40 w-40 bg-amber-300/22" />
+          <span className="orb -bottom-12 -left-10 h-32 w-32 bg-emerald-400/20" />
 
           <div className="relative">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold tracking-tight text-slate-900">
-                  Antrean menunggu tindak lanjut
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Status Menunggu, diurutkan dari yang paling lama.
-                </p>
-              </div>
+            <h2 className="text-base font-semibold tracking-tight text-slate-900">
+              Tren harian per kategori
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Jumlah pengaduan per hari, {range ?? "seluruh periode"}.
+            </p>
 
-              <Link
-                to="/complaints?status=PENDING"
-                className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-indigo-600 transition hover:text-violet-700"
-              >
-                Buka antrean
-                <ArrowUpRight size={15} />
-              </Link>
+            <div className="mt-5">
+              <TrendLines data={trendData} />
             </div>
+          </div>
+        </Card>
+      </section>
 
-            {isLoading ? (
-              <div className="mt-5 space-y-3">
-                {[0, 1, 2].map((row) => (
-                  <div
-                    key={row}
-                    className="h-14 animate-pulse rounded-2xl bg-slate-900/[0.05]"
-                  />
-                ))}
-              </div>
-            ) : queue.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-                <span className="glass-chip h-12 w-12 text-emerald-600">
-                  <CheckCircle2 size={20} />
-                </span>
-                <p className="text-sm font-semibold text-slate-800">
-                  Antrean kosong
-                </p>
-                <p className="max-w-xs text-xs leading-5 text-slate-500">
-                  Tidak ada pengaduan berstatus Menunggu saat ini.
-                </p>
-              </div>
-            ) : (
-              <>
-                {queueAge > 0 && (
-                  <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50/90 px-3.5 py-2.5 text-xs font-medium leading-5 text-amber-800">
-                    Pengaduan tertua di antrean sudah menunggu {queueAge} hari.
-                  </p>
-                )}
+      <section className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
+        <Card className="relative overflow-hidden">
+          <div className="relative">
+            <h2 className="text-base font-semibold tracking-tight text-slate-900">
+              Status dalam tiap kategori
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Perbandingan status; cari kategori dengan backlog terbesar.
+            </p>
 
-                <div className="mt-4 divide-y divide-slate-900/[0.07]">
-                  {queue.map((complaint) => (
-                    <Link
-                      key={complaint.id}
-                      to={`/complaints/${complaint.id}`}
-                      className="group flex items-center gap-3 py-3.5 transition hover:bg-white/70"
-                    >
-                      <span className="glass-chip h-10 w-10 shrink-0 border-white/70 bg-white/65 text-slate-500 transition group-hover:border-white/85 group-hover:bg-white/85 group-hover:text-indigo-600">
-                        <Inbox size={18} />
-                      </span>
+            <div className="mt-5">
+              <StatusStackedBars data={stackedData} />
+            </div>
+          </div>
+        </Card>
 
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-slate-800">
-                          {complaint.title}
-                        </span>
-                        <span className="mt-1 block truncate text-xs text-slate-500">
-                          {complaint.facilityName} ·{" "}
-                          {formatDate(complaint.created_at)}
-                        </span>
-                      </span>
+        <Card className="relative overflow-hidden">
+          <span className="orb -right-10 -top-10 h-32 w-32 bg-amber-300/22" />
 
-                      <StatusBadge status={complaint.status} />
-                    </Link>
-                  ))}
+          <div className="relative">
+            <h2 className="text-base font-semibold tracking-tight text-slate-900">
+              Lima lokasi tersibuk
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Fasilitas atau lokasi kejadian dengan laporan terbanyak.
+            </p>
+
+            <div className="mt-5">
+              <TopLocationBars
+                items={topLocations}
+                caption="Hitungan gabungan seluruh kategori pada rentang ini."
+              />
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* D+E. Tab per kategori: tabel, metrik status, perlu perhatian, aktivitas */}
+      <section className="space-y-4">
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          role="tablist"
+          aria-label="Kategori pengaduan"
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              className={`glass-pill border-white/70 px-4 py-2 text-sm font-semibold transition-colors ${
+                activeTab === tab.value
+                  ? "bg-indigo-500/90 text-white"
+                  : "bg-white/70 text-slate-600 hover:bg-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.6fr_0.9fr]">
+          <div className="space-y-6">
+            {/* Metrik status kategori tab aktif */}
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <TabMetricCard
+                label="Total"
+                value={formatNumber(tabRows.length)}
+                detail={
+                  tabCategory === null
+                    ? "Semua kategori"
+                    : CATEGORY_CONFIG[tabCategory].label
+                }
+                chipTone="border-slate-200 bg-slate-50/90 text-slate-700"
+              />
+              {COMPLAINT_STATUSES.map((status) => (
+                <TabMetricCard
+                  key={status}
+                  label={STATUS_CONFIG[status].label}
+                  value={formatNumber(
+                    tabRows.filter((row) => row.status === status).length,
+                  )}
+                  chipTone={STATUS_CONFIG[status].badgeClassName}
+                />
+              ))}
+            </section>
+
+            <ComplaintTablePanel
+              category={tabCategory}
+              facilities={facilities}
+              showReporter={isReporterVisible}
+            />
+          </div>
+
+          <div className="space-y-6">
+            <AttentionPanel rows={tabRows} />
+
+            <Card className="relative overflow-hidden">
+              <div className="relative">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="font-semibold tracking-tight text-slate-900">
+                      Aktivitas terbaru
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {range === null
+                        ? "Seluruh periode"
+                        : `${range} hari terakhir`}
+                    </p>
+                  </div>
+
+                  <Link
+                    to="/complaints"
+                    className="inline-flex shrink-0 items-center text-sm font-semibold text-indigo-600 transition hover:text-violet-700"
+                  >
+                    Lihat semua
+                  </Link>
                 </div>
 
-                {stats.pending > MAX_QUEUE && (
-                  <p className="mt-3 text-xs text-slate-500">
-                    Menampilkan {MAX_QUEUE} dari {stats.pending} pengaduan
-                    menunggu.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </Card>
-      </section>
+                {(() => {
+                  const visibleRecent = recent.filter(
+                    (row) =>
+                      tabCategory === null || row.category === tabCategory,
+                  )
 
-      <section className="grid gap-6 xl:grid-cols-[1.55fr_0.85fr]">
-        <Card className="overflow-hidden p-0">
-          <div className="relative flex items-center justify-between gap-4 border-b border-slate-900/[0.08] px-5 py-5 sm:px-6">
-            <div>
-              <h2 className="font-semibold tracking-tight text-slate-900">
-                Pengaduan terbaru
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Seluruh laporan dari semua pengguna.
-              </p>
-            </div>
+                  if (visibleRecent.length === 0) {
+                    return (
+                      <p className="py-8 text-center text-sm text-slate-500">
+                        Belum ada aktivitas pada rentang ini.
+                      </p>
+                    )
+                  }
 
-            <Link
-              to="/complaints"
-              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-indigo-600 transition hover:text-violet-700"
-            >
-              Lihat semua
-              <ArrowUpRight size={15} />
-            </Link>
-          </div>
-
-          {isLoading ? (
-            <div className="relative space-y-3 px-5 py-6 sm:px-6">
-              {[0, 1, 2].map((row) => (
-                <div
-                  key={row}
-                  className="h-14 animate-pulse rounded-2xl bg-slate-900/[0.05]"
-                />
-              ))}
-            </div>
-          ) : recent.length === 0 ? (
-            <div className="relative px-5 py-12 text-center sm:px-6">
-              <span className="glass-chip mx-auto h-12 w-12 text-slate-500">
-                <FileText size={20} />
-              </span>
-              <p className="mt-4 text-sm font-semibold text-slate-800">
-                Belum ada pengaduan masuk
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Laporan dari pengguna akan muncul di sini.
-              </p>
-            </div>
-          ) : (
-            <div className="relative divide-y divide-slate-900/[0.07]">
-              {recent.map((complaint) => (
-                <Link
-                  key={complaint.id}
-                  to={`/complaints/${complaint.id}`}
-                  className="group flex items-center gap-3 px-5 py-4 transition hover:bg-white/70 sm:px-6"
-                >
-                  <span className="glass-chip h-10 w-10 shrink-0 border-white/70 bg-white/65 text-slate-500 transition group-hover:border-white/85 group-hover:bg-white/85 group-hover:text-indigo-600">
-                    <FileText size={18} />
-                  </span>
-
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-800">
-                      {complaint.title}
-                    </span>
-                    <span className="mt-1 block truncate text-xs text-slate-500">
-                      {complaint.facilityName} · {complaint.location} ·{" "}
-                      {formatDate(complaint.created_at)}
-                    </span>
-                  </span>
-
-                  <StatusBadge status={complaint.status} />
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <span className="orb -right-10 -top-10 h-36 w-36 bg-amber-300/25" />
-          <span className="orb -bottom-12 -left-10 h-32 w-32 bg-blue-400/20" />
-
-          <div className="relative">
-            <span className="glass-chip h-11 w-11 border-amber-200 bg-amber-50/90 text-amber-700">
-              <CircleAlert size={21} />
-            </span>
-
-            <h2 className="mt-5 text-lg font-semibold tracking-tight text-slate-900">
-              Perlu ditinjau
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {stats.pending} pengaduan menunggu dan {stats.rejected} ditolak.
-              Prioritaskan laporan dengan status tertunda.
-            </p>
-
-            <div className="mt-5 grid gap-2">
-              {shortcuts.map((shortcut) => {
-                const Icon = shortcut.icon
-
-                return (
-                  <Link
-                    key={shortcut.href}
-                    to={shortcut.href}
-                    className="group flex items-start gap-3 rounded-xl border border-white/70 bg-white/55 px-3.5 py-3 transition hover:border-white/90 hover:bg-white/80"
-                  >
-                    <span className="glass-chip h-9 w-9 shrink-0 text-indigo-600 transition group-hover:bg-white/85">
-                      <Icon size={17} />
-                    </span>
-
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-800">
-                        {shortcut.label}
+                  return visibleRecent.map((row) => (
+                    <Link
+                      key={row.id}
+                      to={`/complaints/${row.id}`}
+                      className="group flex items-center gap-3 border-b border-slate-900/[0.06] py-3 first:pt-0 last:border-b-0 last:pb-0"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-800">
+                          {row.title}
+                        </span>
+                        <span className="mt-1 block truncate text-xs text-slate-500">
+                          {row.is_anonymous
+                            ? "Anonim"
+                            : (row.reporter_username ?? "-")}{" "}
+                          · {ageLabel(row.created_at)}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block text-xs leading-5 text-slate-500">
-                        {shortcut.description}
-                      </span>
-                    </span>
-                  </Link>
-                )
-              })}
-            </div>
 
-            <p className="mt-4 flex items-start gap-2 text-xs leading-5 text-slate-500">
-              <Users size={14} className="mt-0.5 shrink-0" />
-              <span>
-                Kelola pengguna tersedia lewat tautan di samping atau menu
-                sidebar.
-              </span>
-            </p>
+                      <StatusBadge status={row.status} />
+                    </Link>
+                  ))
+                })()}
+              </div>
+            </Card>
           </div>
-        </Card>
+        </div>
       </section>
     </div>
+  )
+}
+
+// Label pembanding untuk kasus khusus "periode sebelumnya kosong": formatDelta
+// sudah membuat "+n baru", jadi label ini hanya menjelaskan konteksnya.
+function runtimeDeltaLabel(delta: PeriodDelta | undefined, range: number) {
+  if (delta && delta.previous === 0 && delta.current > 0) {
+    return `belum ada pada ${range} hari sebelumnya`
+  }
+
+  return `vs ${range} hari sebelumnya`
+}
+
+interface TabMetricCardProps {
+  label: string
+  value: string
+  detail?: string
+  // Kelas tint chip ikon mengikuti STATUS_CONFIG atau warna netral untuk Total.
+  chipTone: string
+}
+
+function TabMetricCard({ label, value, detail, chipTone }: TabMetricCardProps) {
+  return (
+    <Card className="overflow-hidden">
+      <span className={`glass-chip h-9 w-9 shrink-0 ${chipTone}`}>
+        <FileText size={17} />
+      </span>
+
+      <p className="mt-3 text-sm font-semibold text-slate-900">{label}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+        {value}
+      </p>
+      {detail ? <p className="mt-1 text-xs text-slate-500">{detail}</p> : null}
+    </Card>
   )
 }
 

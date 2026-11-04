@@ -19,8 +19,19 @@ export interface Complaint {
   priority: "LOW" | "MEDIUM" | "HIGH";
   // URL absolut dari MEDIA_URL. null saat pengaduan dibuat tanpa foto.
   image: string | null;
+  // ISO timestamp, atau null saat pengaduan masih terbuka. Diisi backend
+  // saat status berubah ke RESOLVED dan dikosongkan lagi saat dibuka kembali.
+  resolved_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Waktu penyelesaian diisi backend saat status menyentuh RESOLVED; null untuk
+// pengaduan yang masih terbuka.
+export type ResolvedComplaint = Omit<Complaint, "resolved_at">;
+
+export interface ComplaintWithResolution extends ResolvedComplaint {
+  resolved_at: string | null;
 }
 
 export interface SubCategoryOption {
@@ -55,13 +66,26 @@ export interface UpdateComplaintPayload {
   priority?: Complaint["priority"];
 }
 
+// Endpoint list sekarang mendukung filter di server (ScopedComplaintMixin di
+// apps/complaints/views.py). Param itu dipakai halaman tab kategori; halaman
+// yang butuh seluruh baris memanggil tanpa params.
+export interface ComplaintListParams {
+  category?: string;
+  status?: string;
+  priority?: string;
+  search?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
 // Endpoint ini mengembalikan SELURUH baris tanpa paginasi, jadi filter,
 // pencarian, dan statistik masih dihitung di client sampai backend menambahkan
-// paginasi dan endpoint agregasi. Envelope dikembalikan apa adanya supaya
-// pemanggil tahu apakah angka yang dihitungnya mencakup semua baris atau hanya
-// halaman pertama.
-export const getComplaints = async (): Promise<ListEnvelope<Complaint>> => {
-  const response = await api.get("/complaints/");
+// paginasi. Envelope dikembalikan apa adanya supaya pemanggil tahu apakah
+// angka yang dihitungnya mencakup semua baris atau hanya halaman pertama.
+export const getComplaints = async (
+  params?: ComplaintListParams,
+): Promise<ListEnvelope<Complaint>> => {
+  const response = await api.get("/complaints/", { params });
   return unwrapList<Complaint>(response.data);
 };
 
@@ -128,6 +152,59 @@ export const deleteComplaint = async (id: number): Promise<void> => {
 
 export const getComplaintCategories = async (): Promise<ComplaintCategory[]> => {
   const response = await api.get("/complaints/categories/");
+  return response.data;
+};
+
+// --- Ringkasan agregat (GET /api/complaints/summary/) ------------------------
+export type ComplaintCategoryName = Complaint["category"];
+export type ComplaintStatusName = Complaint["status"];
+
+// Satu titik tren harian 30 hari; key-nya value enum kategori agar langsung
+// bisa dipakai chart multi-seri tanpa remapping.
+export interface SummaryTrendPoint {
+  date: string;
+  FASILITAS: number;
+  AKADEMIK: number;
+  KEAMANAN: number;
+}
+
+export interface SummaryTopLocation {
+  label: string;
+  // "facility" = nama fasilitas; "location" = teks lokasi kejadian kategori
+  // non-FASILITAS. Dipakai frontend untuk ikon/tooltip.
+  kind: "facility" | "location";
+  count: number;
+}
+
+export interface ComplaintSummary {
+  total: number;
+  by_category: Record<ComplaintCategoryName, number>;
+  by_status: Record<ComplaintStatusName, number>;
+  by_status_per_category: Record<
+    ComplaintCategoryName,
+    Record<ComplaintStatusName, number>
+  >;
+  by_priority: Record<Complaint["priority"], number>;
+  // 30 bucket harian terurut (terlama di depan), tanggal kosong tetap nol.
+  trend_30d: SummaryTrendPoint[];
+  top_locations: SummaryTopLocation[];
+  avg_resolution_hours: {
+    overall: number | null;
+    by_category: Record<ComplaintCategoryName, number | null>;
+  };
+  resolution_rate: {
+    overall: number;
+    by_category: Record<ComplaintCategoryName, number>;
+  };
+  // 10 aktivitas terbaru; aturan privasi identik dengan endpoint list
+  // (reporter_username hanya untuk ADMIN).
+  recent_activity: Complaint[];
+}
+
+// Dtype ringkasan disepakati di ComplaintSummaryView._aggregate; penyesuaian
+// bentuk response dan interface ini harus dilakukan berpasangan.
+export const getComplaintSummary = async (): Promise<ComplaintSummary> => {
+  const response = await api.get("/complaints/summary/");
   return response.data;
 };
 

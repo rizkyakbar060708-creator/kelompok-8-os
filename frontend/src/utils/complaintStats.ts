@@ -1,4 +1,5 @@
 import type { Complaint } from "../services/complaintService";
+import { subCategoryLabel } from "../services/complaintService";
 import type { Facility } from "../services/facilityService";
 import {
   COMPLAINT_STATUSES,
@@ -255,4 +256,300 @@ export function oldestPendingAgeDays(complaints: Complaint[]): number {
   }
 
   return Math.max(0, Math.floor(elapsed / 86_400_000));
+}
+
+// --- Jendela waktu & perbandingan periode -----------------------------------
+
+// Semua pengaduan yang dibuat dalam N hari terakhir. days null = tanpa batas
+// (rentang "semua").
+export function inWindow<T extends Complaint>(
+  complaints: T[],
+  days: number | null,
+  today = new Date(),
+): T[] {
+  if (days === null) {
+    return complaints;
+  }
+
+  const cutoff = new Date(today);
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - (days - 1));
+
+  return complaints.filter(
+    (complaint) =>
+      !Number.isNaN(new Date(complaint.created_at).getTime()) &&
+      new Date(complaint.created_at) >= cutoff,
+  );
+}
+
+export interface PeriodDelta {
+  current: number;
+  previous: number;
+  // Selisih bertanda; positif berarti periode ini melebihi periode sebelumnya.
+  diff: number;
+}
+
+// Pengaduan dibuat pada periode ini versus periode sepanjang sama sebelum itu.
+// Pemanggil menentukan arah baik/buruk (menunggu naik itu buruk, selesai naik
+// itu baik), jadi fungsi ini sengaja netral.
+export function periodDelta(
+  complaints: Complaint[],
+  days: number,
+  today = new Date(),
+): PeriodDelta {
+  const currentRows = inWindow(complaints, days, today);
+
+  const start = new Date(today);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (2 * days - 1));
+
+  const previousRows = complaints.filter(
+    (complaint) =>
+      !Number.isNaN(new Date(complaint.created_at).getTime()) &&
+      new Date(complaint.created_at) >= start &&
+      new Date(complaint.created_at) < new Date(start.getTime() + (days * 86_400_000)),
+  );
+
+  const current = currentRows.length;
+  const previous = previousRows.length;
+
+  return { current, previous, diff: current - previous };
+}
+
+// Format delta siap tampil: selalu ada tanda, dan periode sebelumnya yang
+// kosong dilabeli "baru" supaya angka pertama tidak terlihat seperti lonjakan
+// dramatis dari nol.
+export function formatDelta(delta: PeriodDelta): string | null {
+  if (delta.previous === 0) {
+    return delta.current === 0 ? null : `+${delta.current} baru`;
+  }
+
+  return delta.diff > 0 ? `+${delta.diff}` : `${delta.diff}`;
+}
+
+// Arah perubahan dipisah dari nilai baik/buruknya yang memang milik metrik.
+export type DeltaTone = "good" | "bad" | "neutral";
+
+// --- Rata-rata waktu penyelesaian----------------------------------------
+
+export function avgResolutionHours(complaints: Complaint[]): number | null {
+  const durations = complaints
+    .filter(
+      (complaint) =>
+        complaint.resolved_at !== null &&
+        !Number.isNaN(new Date(complaint.resolved_at).getTime()),
+    )
+    .map(
+      (complaint) =>
+        (new Date(complaint.resolved_at as string).getTime() -
+          new Date(complaint.created_at).getTime()) /
+        3_600_000,
+    )
+    .filter((hours) => Number.isFinite(hours) && hours >= 0);
+
+  if (durations.length === 0) {
+    return null;
+  }
+
+  return durations.reduce((sum, hours) => sum + hours, 0) / durations.length;
+}
+
+// "3,5 jam" atau "2,1 hari" — satunya saja, dipilih unit yang paling mudah
+// dibaca. Rounding ke satu desimal dengan koma desimal Indonesia.
+export function formatResolutionHours(hours: number | null): string {
+  if (hours === null) {
+    return "—";
+  }
+
+  if (hours < 48) {
+    return `${hours.toFixed(1).replace(".", ",")} jam`;
+  }
+
+  return `${(hours / 24).toFixed(1).replace(".", ",")} hari`;
+}
+
+// --- Ringkasan per kategori ----------------------------------------------
+
+export interface CategoryStats {
+  category: Complaint["category"];
+  total: number;
+  slices: StatusSlice[];
+  highPriority: number;
+  resolutionRate: number;
+  // Rata-rata waktu penyelesaian kategori ini, dalam jam (null saat belum ada
+  // yang selesai).
+  avgResolution: number | null;
+  trend7: TrendPoint[];
+}
+
+// Status per kategori + hitungan prioritas + tren 7 hari. Semua dihitung dari
+// baris yang sama dengan kartu lain supaya tidak ada dua angka yang
+// bertentangan di satu halaman.
+export function buildCategoryStats(
+  complaints: Complaint[],
+  today = new Date(),
+): Record<Complaint["category"], CategoryStats> {
+  const categories: Complaint["category"][] = [
+    "FASILITAS",
+    "AKADEMIK",
+    "KEAMANAN",
+  ];
+
+  const result = {} as Record<Complaint["category"], CategoryStats>;
+
+  for (const category of categories) {
+    const rows = complaints.filter(
+      (complaint) => complaint.category === category,
+    );
+    const slices = statusSlices(rows);
+    const resolved =
+      slices.find((slice) => slice.status === "RESOLVED")?.count ?? 0;
+
+    result[category] = {
+      category,
+      total: rows.length,
+      slices,
+      highPriority: rows.filter((row) => row.priority === "HIGH").length,
+      resolutionRate:
+        rows.length === 0 ? 0 : (resolved / rows.length) * 100,
+      avgResolution: avgResolutionHours(rows),
+      trend7: dailyTrend(rows, 7, today),
+    };
+  }
+
+  return result;
+}
+
+// --- Umur pengaduan -------------------------------------------------------
+
+// "Hari ini", "5 jam lalu", "3 hari lalu" — untuk kolom umur di tabel.
+export function ageLabel(value: string, now = new Date()): string {
+  const created = new Date(value);
+
+  if (Number.isNaN(created.getTime())) {
+    return "-";
+  }
+
+  const elapsedMs = now.getTime() - created.getTime();
+
+  if (elapsedMs < 0) {
+    return "Hari ini";
+  }
+
+  const hours = Math.floor(elapsedMs / 3_600_000);
+
+  if (hours < 1) {
+    return "Baru saja";
+  }
+
+  if (hours < 24) {
+    return `${hours} jam lalu`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  return `${days} hari lalu`;
+}
+
+export const ATTENTION_AGE_DAYS = 3;
+
+export function unresolvedStatus(
+  complaint: Complaint,
+): boolean {
+  return (
+    complaint.status === "PENDING" || complaint.status === "IN_PROGRESS"
+  );
+}
+
+// Panel "Perlu perhatian": HIGH apapun statusnya, atau pengaduan yang belum
+// ditindaklanjuti lebih dari 3 hari (konstanta di atas, supaya aturan satu
+// angka ini bisa diuji langsung).
+export function needsAttention(
+  complaint: Complaint,
+  now = new Date(),
+): boolean {
+  if (!unresolvedStatus(complaint)) {
+    return false;
+  }
+
+  if (complaint.priority === "HIGH") {
+    return true;
+  }
+
+  const created = new Date(complaint.created_at);
+
+  if (Number.isNaN(created.getTime())) {
+    return false;
+  }
+
+  return (
+    now.getTime() - created.getTime() > ATTENTION_AGE_DAYS * 86_400_000
+  );
+}
+
+// Alasan singkat mengapa baris ini masuk panel perhatian, untuk ditampilkan
+// lebih dari sekadar warna.
+export function attentionReason(
+  complaint: Complaint,
+  now = new Date(),
+): string {
+  if (complaint.priority === "HIGH") {
+    if (unresolvedStatus(complaint) && isOverAgeThreshold(complaint, now)) {
+      return "Prioritas tinggi dan menunggu lebih dari 3 hari";
+    }
+
+    return "Prioritas tinggi";
+  }
+
+  return `Belum ditangani ${Math.floor(
+    (now.getTime() - new Date(complaint.created_at).getTime()) / 86_400_000,
+  )} hari`;
+}
+
+function isOverAgeThreshold(complaint: Complaint, now: Date): boolean {
+  return (
+    now.getTime() - new Date(complaint.created_at).getTime() >
+    ATTENTION_AGE_DAYS * 86_400_000
+  );
+}
+
+export interface SituationCount {
+  label: string;
+  count: number;
+}
+
+// 5 lokasi paling sering: nama fasilitas untuk pengaduan ber-fasilitas, teks
+// lokasi kejadian (fallback label sub-kategori) untuk kategori lain. Logika
+// label ini identik dengan _location_label di backend supaya angka top-5 yang
+// dihitung frontend tidak berbeda dengan versi backend bila dibandingkan.
+export function topSituations(
+  rows: ComplaintRow[],
+  limit = 5,
+): SituationCount[] {
+  const counts = new Map<string, number>();
+
+  for (const row of rows) {
+    const label = (
+      row.facility !== null
+        ? row.facilityName
+        : row.incident_location?.trim() ||
+          subCategoryLabel(row.sub_category) ||
+          ""
+    ).trim();
+
+    if (label === "") {
+      continue;
+    }
+
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+export function formatNumber(value: number): string {
+  return new Intl.NumberFormat("id-ID").format(value);
 }
