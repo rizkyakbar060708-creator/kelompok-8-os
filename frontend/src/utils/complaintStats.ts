@@ -461,9 +461,13 @@ export function unresolvedStatus(
   );
 }
 
-// Panel "Perlu perhatian": HIGH apapun statusnya, atau pengaduan yang belum
-// ditindaklanjuti lebih dari 3 hari (konstanta di atas, supaya aturan satu
-// angka ini bisa diuji langsung).
+// Panel "Perlu perhatian": pengaduan belum selesai (PENDING/IN_PROGRESS) yang
+// HIGH apapun umurnya, atau yang mengendap lebih dari 3 hari (konstanta di
+// atas, supaya aturan satu kalimat ini bisa diuji langsung).
+//
+// Aturan yang sama persis dihitung backend di summary.urgent_by_category
+// (ComplaintSummaryView); dot merah sidebar membaca agregat itu, jadi tidak
+// boleh ada dua definisi "mendesak" yang berbeda.
 export function needsAttention(
   complaint: Complaint,
   now = new Date(),

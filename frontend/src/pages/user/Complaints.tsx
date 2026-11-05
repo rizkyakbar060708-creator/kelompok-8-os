@@ -8,7 +8,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useEffect, useState } from "react"
 
 import ComplaintCard from "../../components/complaint/ComplaintCard"
@@ -18,7 +18,13 @@ import {
   getComplaints,
   SUB_CATEGORY_LABELS,
   type Complaint,
+  type ComplaintListParams,
 } from "../../services/complaintService"
+import {
+  CATEGORY_CONFIG,
+  categoryPath,
+  isComplaintCategory,
+} from "../../utils/categoryConfig"
 import { getFacilities } from "../../services/facilityService"
 import { joinFacilities, type ComplaintRow } from "../../utils/complaintStats"
 import { STAFF } from "../../utils/roles"
@@ -56,9 +62,6 @@ const isStatus = (value: string | null): value is Status =>
 const isPriority = (value: string | null): value is Priority =>
   PRIORITY_OPTIONS.some((option) => option.value === value)
 
-const isCategory = (value: string | null): value is Category =>
-  CATEGORY_OPTIONS.some((option) => option.value === value)
-
 // Label sub-kategori memakai map yang sama dengan badge kartu supaya satu
 // perubahan label tidak harus diulang di dua tempat.
 const categorySubValues: Record<"AKADEMIK" | "KEAMANAN", string[]> = {
@@ -88,17 +91,20 @@ const SUB_CATEGORY_OPTIONS: { value: SubCategory; label: string }[] = [
 const iSubCategory = (value: string | null): value is Exclude<SubCategory, "all"> =>
   Object.hasOwn(SUB_CATEGORY_LABELS, value ?? "")
 
-function Complaints() {
+function Complaints({ category }: { category?: Complaint["category"] }) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [error, setError] = useState("")
   const [search, setSearch] = useState("")
-  // Filter status, prioritas, dan kategori datang dari query string supaya tautan pintasan
-  // dari dashboard (mis. ?status=PENDING) langsung bekerja dan tombol "kembali"
-  // browser mengembalikan keadaan filter yang sama. Nilai yang tidak dikenal
-  // di URL diperlakukan sebagai "all" supaya parameter rusak tidak membuat
-  // daftar kosong tanpa penjelasan.
+  // Filter status, prioritas, dan sub-kategori datang dari query string
+  // supaya tautan pintasan dari dashboard serta bar status sidebar
+  // (mis. /complaints/keamanan?status=PENDING) langsung bekerja dan tombol
+  // "kembali" browser mengembalikan keadaan filter yang sama. Kategori tidak
+  // lagi lewat query — nilai itu terkunci di route statis (prop `category`).
+  // Nilai yang tidak dikenal di URL diperlakukan sebagai "all" supaya
+  // parameter rusak tidak membuat daftar kosong tanpa penjelasan.
   const statusParam = searchParams.get("status")
   const priorityParam = searchParams.get("priority")
   const categoryParam = searchParams.get("category")
@@ -107,7 +113,6 @@ function Complaints() {
   const priorityFilter: Priority = isPriority(priorityParam)
     ? priorityParam
     : "all"
-  const categoryFilter: Category = isCategory(categoryParam) ? categoryParam : "all"
   const subCategoryFilter: SubCategory = iSubCategory(subCategoryParam)
     ? subCategoryParam
     : "all"
@@ -123,15 +128,49 @@ function Complaints() {
   // bukan bukti soal hak akses.
   const canCreate = user?.role !== STAFF
 
+  // Tautan lama /complaints?category=X masih hidup: dialihkan ke route kategori
+  // statis baru (tanpa param category, filter lain dibawa). Redirect pakai
+  // replace supaya tombol "kembali" tidak jatuh ke URL dengan format lama.
+  useEffect(() => {
+    if (category || !isComplaintCategory(categoryParam)) {
+      return
+    }
+
+    const next = new URLSearchParams(searchParams)
+    next.delete("category")
+    const query = next.toString()
+
+    navigate(
+      `${categoryPath(categoryParam)}${query ? `?${query}` : ""}`,
+      { replace: true },
+    )
+  }, [category, categoryParam, navigate, searchParams])
+
   useEffect(() => {
     let active = true
 
     const fetchComplaints = async () => {
       try {
+        // Kategori (dari route) dan status (dari query string, mis ?status=PENDING
+        // dari sidebar) difilter di server supaya isi halaman selalu konsisten
+        // dengan angka badge sidebar yang dibaca dari endpoint yang sama.
         // Serializer mengembalikan facility sebagai integer PK, jadi nama dan
         // lokasi diambil dari daftar fasilitas lalu di-join di client.
+        const params: ComplaintListParams = {}
+        if (category) {
+          params.category = category
+        }
+        if (statusFilter !== "all") {
+          params.status = statusFilter
+        }
+
+        const complaintsPromise =
+          Object.keys(params).length > 0
+            ? getComplaints(params)
+            : getComplaints()
+
         const [complaints, facilities] = await Promise.all([
-          getComplaints(),
+          complaintsPromise,
           getFacilities(),
         ])
 
@@ -146,7 +185,8 @@ function Complaints() {
           return
         }
 
-        setRows([])
+        // Refetch filter yang gagal tidak boleh menghapus daftar yang sudah
+        // tampil; baris tetap ditampilkan dan pesan ulang muncul di atasnya.
         setError("Gagal memuat pengaduan. Periksa koneksi ke server.")
       }
     }
@@ -156,18 +196,17 @@ function Complaints() {
     return () => {
       active = false
     }
-  }, [retryKey])
+  }, [retryKey, statusFilter, category])
 
   const complaints = rows ?? []
   const isLoading = rows === null
   const hasActiveFilter =
     statusFilter !== "all" ||
     priorityFilter !== "all" ||
-    categoryFilter !== "all" ||
     subCategoryFilter !== "all"
 
   const setFilterParam = (
-    key: "status" | "priority" | "category" | "sub_category",
+    key: "status" | "priority" | "sub_category",
     value: string,
   ) => {
     const next = new URLSearchParams(searchParams)
@@ -181,33 +220,43 @@ function Complaints() {
     setSearchParams(next, { replace: true })
   }
 
+  // Pilih kategori pada halaman "Semua" berarti pindah ke route kategorinya;
+  // filter status yang sedang aktif dibawa supaya mutasi filter tetap satu
+  // arah (category = route, sisanya = query string).
+  const navigateToCategory = (value: string) => {
+    if (!isComplaintCategory(value)) {
+      return
+    }
+
+    const next = new URLSearchParams(searchParams)
+    next.delete("category")
+    const query = next.toString()
+
+    navigate(`${categoryPath(value)}${query ? `?${query}` : ""}`)
+  }
+
   const clearFilters = () => {
     setSearch("")
     setSearchParams(new URLSearchParams(), { replace: true })
   }
 
+  // Kategori dan status sudah difilter di server (lihat fetch di atas), jadi
+  // sisa filter yang dikasih di client adalah pencarian, prioritas, dan
+  // sub-kategori.
   const filteredComplaints = complaints.filter((complaint) => {
     const matchesSearch = complaint.title
       .toLowerCase()
       .includes(search.toLowerCase())
 
-    const matchesStatus =
-      statusFilter === "all" || complaint.status === statusFilter
-
     const matchesPriority =
       priorityFilter === "all" || complaint.priority === priorityFilter
-
-    const matchesCategory =
-      categoryFilter === "all" || complaint.category === categoryFilter
 
     const matchesSubCategory =
       subCategoryFilter === "all" || complaint.sub_category === subCategoryFilter
 
     return (
       matchesSearch &&
-      matchesStatus &&
       matchesPriority &&
-      matchesCategory &&
       matchesSubCategory
     )
   })
@@ -221,7 +270,11 @@ function Complaints() {
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           <p className="eyebrow mb-2">Daftar laporan</p>
-          <h1 className="page-title">Pengaduan</h1>
+          <h1 className="page-title">
+            {category
+              ? `Pengaduan ${CATEGORY_CONFIG[category].label}`
+              : "Pengaduan"}
+          </h1>
           <p className="page-subtitle">
             {canCreate
               ? "Kelola dan pantau pengaduan fasilitas kamu."
@@ -231,7 +284,14 @@ function Complaints() {
 
         {canCreate && (
           <Link
-            to="/complaints/create"
+            // Di route kategori, tombol utama ikut mengisi kategori supaya
+            // alur "lihat laporan X, tambah laporan X" tidak bolak-balik meng-
+            // ganti select kategori di form.
+            to={
+              category
+                ? `/complaints/create?category=${category}`
+                : "/complaints/create"
+            }
             className="btn-primary w-full sm:w-auto"
           >
             <Plus size={18} />
@@ -287,20 +347,24 @@ function Complaints() {
           ))}
         </select>
 
-        <select
-          value={categoryFilter}
-          onChange={(event) =>
-            setFilterParam("category", event.target.value)
-          }
-          aria-label="Filter kategori pengaduan"
-          className="input-base cursor-pointer py-2.5 sm:w-48"
-        >
-          {CATEGORY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        {/* Di route kategori, filter kategori sudah dibeli route-nya, jadi
+            select ini hanya tampil di /complaints. Memilih opsi = pindah
+            route kategori (bukan filter klien) supaya badge sidebar dan isi
+            halaman selalu satu sumber. */}
+        {!category && (
+          <select
+            value="all"
+            onChange={(event) => navigateToCategory(event.target.value)}
+            aria-label="Filter kategori pengaduan"
+            className="input-base cursor-pointer py-2.5 sm:w-48"
+          >
+            {CATEGORY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
 
         <select
           value={subCategoryFilter}
@@ -355,74 +419,101 @@ function Complaints() {
       )}
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-500">
-          <LoaderCircle size={30} className="animate-spin" />
-          <p>Memuat pengaduan...</p>
-        </div>
-      ) : error ? (
-        <div
-          role="alert"
-          className="glass-panel flex flex-col items-center gap-3 rounded-2xl p-8 text-center"
-        >
-          <AlertCircle size={30} className="text-red-500" />
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={() => setRetryKey((key) => key + 1)}
-            className="btn-secondary"
+        error ? (
+          <div
+            role="alert"
+            className="glass-panel flex flex-col items-center gap-3 rounded-2xl p-8 text-center"
           >
-            Coba lagi
-          </button>
-        </div>
-      ) : filteredComplaints.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {filteredComplaints.map((complaint) => (
-            <ComplaintCard
-              key={complaint.id}
-              id={complaint.id}
-              title={complaint.title}
-              category={complaint.category}
-              subCategory={complaint.sub_category}
-              location={`${complaint.facilityName} · ${complaint.location}`}
-              date={new Date(complaint.created_at).toLocaleDateString(
-                "id-ID",
-                {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                },
-              )}
-              status={complaint.status}
-              reporter={complaint.reporter_username}
-              isAnonymous={complaint.is_anonymous}
-            />
-          ))}
-        </div>
+            <AlertCircle size={30} className="text-red-500" />
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={() => setRetryKey((key) => key + 1)}
+              className="btn-secondary"
+            >
+              Coba lagi
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-500">
+            <LoaderCircle size={30} className="animate-spin" />
+            <p>Memuat pengaduan...</p>
+          </div>
+        )
       ) : (
-        <EmptyState
-          icon={SearchX}
-          title={
-            complaints.length === 0
-              ? "Belum ada pengaduan"
-              : "Pengaduan tidak ditemukan"
-          }
-          description={
-            complaints.length === 0
-              ? "Pengaduan yang kamu buat akan muncul di sini."
-              : "Coba gunakan kata kunci atau filter yang berbeda."
-          }
-          action={
-            hasActiveFilter || search ? (
+        <>
+          {error && (
+            <div
+              role="alert"
+              className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3"
+            >
+              <p className="flex items-center gap-2 text-sm text-red-600">
+                <AlertCircle size={17} className="shrink-0" />
+                Gagal memuat ulang. Daftar di bawah masih data sebelumnya.
+              </p>
               <button
                 type="button"
-                onClick={clearFilters}
-                className="btn-secondary"
+                onClick={() => setRetryKey((key) => key + 1)}
+                className="glass-chip h-9 px-3 text-xs font-semibold text-slate-600 transition hover:bg-white/85"
               >
-                Reset filter
+                Muat ulang
               </button>
-            ) : undefined
-          }
-        />
+            </div>
+          )}
+
+          {!error && filteredComplaints.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {filteredComplaints.map((complaint) => (
+                <ComplaintCard
+                  key={complaint.id}
+                  id={complaint.id}
+                  title={complaint.title}
+                  category={complaint.category}
+                  subCategory={complaint.sub_category}
+                  location={`${complaint.facilityName} · ${complaint.location}`}
+                  date={new Date(complaint.created_at).toLocaleDateString(
+                    "id-ID",
+                    {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    },
+                  )}
+                  status={complaint.status}
+                  reporter={complaint.reporter_username}
+                  isAnonymous={complaint.is_anonymous}
+                />
+              ))}
+            </div>
+          ) : !error ? (
+            <EmptyState
+              icon={SearchX}
+              title={
+                complaints.length === 0
+                  ? category
+                    ? "Belum ada pengaduan di kategori ini"
+                    : "Belum ada pengaduan"
+                  : "Pengaduan tidak ditemukan"
+              }
+              description={
+                complaints.length === 0
+                  ? "Pengaduan yang kamu buat akan muncul di sini."
+                  : "Coba gunakan kata kunci atau filter yang berbeda."
+              }
+              action={
+                hasActiveFilter || search ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="btn-secondary"
+                  >
+                    Reset filter
+                  </button>
+                ) : undefined
+              }
+            />
+          ) : null}
+        </>
       )}
     </div>
   )

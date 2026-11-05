@@ -58,6 +58,13 @@ class IsAdmin(BasePermission):
         return is_admin(request.user)
 
 
+class IsStaffOrAdmin(BasePermission):
+    """Akses untuk role pengelola pengaduan: STAFF dan ADMIN."""
+
+    def has_permission(self, request, view):
+        return is_manager(request.user)
+
+
 class IsManagerOrOwner(BasePermission):
     """Batasi akses ke objek milik sendiri; pengelola bebas akses semuanya.
 

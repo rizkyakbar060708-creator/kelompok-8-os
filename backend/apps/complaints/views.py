@@ -188,6 +188,16 @@ class ComplaintSummaryView(ScopedComplaintMixin, APIView):
             category: {key: 0 for key in all_statuses} for category in all_categories
         }
 
+        # Aturan "mendesak" (dot merah sidebar) sengaja disinkronkan dengan
+        # needsAttention di frontend/src/utils/complaintStats.ts — satu kalimat
+        # untuk dua sisi: belum selesai (PENDING atau IN_PROGRESS) DAN
+        # (prioritas HIGH ATAU umur lebih dari 3 hari). Angka urgent_by_category
+        # di sini wajib identik dengan jumlah baris needsAttention per kategori
+        # pada panel "Perlu perhatian"; mengubah aturan berarti mengubah kedua
+        # sisi sekaligus.
+        stale_cutoff = timezone.now() - timedelta(days=3)
+        urgent_by_category = {key: 0 for key in all_categories}
+
         # Tren harian 30 hari terakhir: bucket dibuat nol terlebih dahulu
         # supaya tanggal kosong tidak melompat di chart frontend.
         today = timezone.localdate()
@@ -217,6 +227,17 @@ class ComplaintSummaryView(ScopedComplaintMixin, APIView):
             by_status_per_category.setdefault(
                 category, {key: 0 for key in all_statuses}
             )[status] = by_status_per_category[category].get(status, 0) + 1
+
+            still_open = status in (
+                Complaint.Status.PENDING,
+                Complaint.Status.IN_PROGRESS,
+            )
+            is_urgent = still_open and (
+                priority == Complaint.Priority.HIGH
+                or (created_at is not None and created_at < stale_cutoff)
+            )
+            if is_urgent:
+                urgent_by_category[category] += 1
 
             if created_at is not None:
                 day = timezone.localtime(created_at).date()
@@ -291,6 +312,7 @@ class ComplaintSummaryView(ScopedComplaintMixin, APIView):
             "by_category": by_category,
             "by_status": by_status,
             "by_status_per_category": by_status_per_category,
+            "urgent_by_category": urgent_by_category,
             "by_priority": by_priority,
             "trend_30d": trend_30d,
             "top_locations": top_locations,

@@ -185,6 +185,11 @@ export interface ComplaintSummary {
     Record<ComplaintStatusName, number>
   >;
   by_priority: Record<Complaint["priority"], number>;
+  // Dot merah sidebar: jumlah pengaduan mendesak per kategori. Aturannya satu
+  // kalimat yang wajib identik dua sisi (ditulis lengkap di ComplaintSummaryView
+  // dan needsAttention di utils/complaintStats.ts): belum selesai (PENDING/
+  // IN_PROGRESS) DAN (prioritas HIGH ATAU umur lebih dari 3 hari).
+  urgent_by_category: Record<ComplaintCategoryName, number>;
   // 30 bucket harian terurut (terlama di depan), tanggal kosong tetap nol.
   trend_30d: SummaryTrendPoint[];
   top_locations: SummaryTopLocation[];

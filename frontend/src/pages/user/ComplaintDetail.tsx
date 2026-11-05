@@ -18,6 +18,7 @@ import axios from "axios"
 import StatusBadge from "../../components/ui/StatusBadge"
 import Card from "../../components/ui/Card"
 import { useAuth } from "../../contexts/AuthContext"
+import { useComplaintSummary } from "../../contexts/ComplaintSummaryContext"
 import {
   deleteComplaint,
   getComplaintDetail,
@@ -57,6 +58,7 @@ function ComplaintDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { refresh: refreshSummary } = useComplaintSummary()
 
   // Diturunkan saat render, bukan di effect: id yang bukan angka sudah pasti
   // tidak valid, jadi tidak perlu menunggu fetch selesai untuk mengetahuinya.
@@ -196,6 +198,9 @@ function ComplaintDetail() {
       setActionNotice(
         `Tindak lanjut tersimpan. Status pengaduan kini ${statusLabel(updated.status).toLowerCase()}.`,
       )
+      // Badge "Menunggu/Diproses/Selesai" di sidebar mengikat angka endpoint
+      // summary; setiap perubahan status/priority memicu refresh di sini.
+      refreshSummary()
     } catch (requestError: unknown) {
       const message = axios.isAxiosError(requestError)
         ? errorMessage(requestError.response?.data)
@@ -220,6 +225,7 @@ function ComplaintDetail() {
 
     try {
       await deleteComplaint(complaintId)
+      refreshSummary()
       navigate("/complaints")
     } catch (requestError: unknown) {
       const message = axios.isAxiosError(requestError)

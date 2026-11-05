@@ -1282,6 +1282,123 @@ class ComplaintSummaryTests(TestCase):
             response.data["top_locations"],
         )
 
+    def test_urgent_by_category_counts_high_priority_and_stale_pending(self):
+        # HIGH langsung mendesak walau baru dibuat.
+        self._create(
+            self.student,
+            category=Complaint.Category.KEAMANAN,
+            sub_category=Complaint.SubCategory.PENCURIAN,
+            incident_location="Gedung D",
+            priority=Complaint.Priority.HIGH,
+        )
+        # PENDING yang dibuat lebih dari 3 hari lalu juga mendesak.
+        stale = self._create(
+            self.student,
+            category=Complaint.Category.AKADEMIK,
+            sub_category=Complaint.SubCategory.KENDALA_KRS,
+            incident_location="Bagian Akademik",
+        )
+        Complaint.objects.filter(id=stale.id).update(
+            created_at=timezone.now() - timedelta(days=4)
+        )
+
+        self.client.force_authenticate(self.staff)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(response.data["urgent_by_category"]["KEAMANAN"], 1)
+        self.assertEqual(response.data["urgent_by_category"]["AKADEMIK"], 1)
+        # own_academic masih PENDING, tapi baru dibuat hari ini: tidak mendesak.
+        self.assertEqual(response.data["urgent_by_category"]["FASILITAS"], 0)
+
+    def test_urgent_excludes_resolved_and_rejected(self):
+        resolved_high = self._create(
+            self.student,
+            category=Complaint.Category.FASILITAS,
+            facility=self.facility,
+            status=Complaint.Status.RESOLVED,
+            priority=Complaint.Priority.HIGH,
+        )
+        Complaint.objects.filter(id=resolved_high.id).update(
+            created_at=timezone.now() - timedelta(days=5)
+        )
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(response.data["urgent_by_category"]["FASILITAS"], 0)
+
+    def test_urgent_counts_stale_in_progress_but_not_resolved_or_rejected(self):
+        # Aturan yang disinkronkan dengan needsAttention: IN_PROGRESS berumur
+        # lebih dari 3 hari mendesak; RESOLVED/REJECTED tidak, berapa pun
+        # umur atau prioritasnya.
+        stale = timezone.now() - timedelta(days=3, hours=2)
+
+        in_progress = self._create(
+            self.student,
+            category=Complaint.Category.FASILITAS,
+            facility=self.facility,
+            status=Complaint.Status.IN_PROGRESS,
+        )
+        Complaint.objects.filter(id=in_progress.id).update(created_at=stale)
+
+        for old_status in (Complaint.Status.RESOLVED, Complaint.Status.REJECTED):
+            old_row = self._create(
+                self.student,
+                category=Complaint.Category.AKADEMIK,
+                sub_category=Complaint.SubCategory.KENDALA_KRS,
+                incident_location="Ruang akademik",
+                status=old_status,
+            )
+            Complaint.objects.filter(id=old_row.id).update(created_at=stale)
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+
+        self.assertEqual(response.data["urgent_by_category"]["FASILITAS"], 1)
+        self.assertEqual(response.data["urgent_by_category"]["AKADEMIK"], 0)
+
+    def test_urgent_and_status_counts_respect_role_scope(self):
+        # PELECEHAN_PERUNDUNGAN otomatis HIGH saat dibuat lewat API; di sini
+        # priority=HIGH ditulis eksplisit supaya barisnya setara dengan itu.
+        self._create(
+            self.student,
+            category=Complaint.Category.KEAMANAN,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+            incident_location="Lorong rahasia",
+            priority=Complaint.Priority.HIGH,
+        )
+
+        # STAFF: laporan PELECEHAN disembunyikan mixin, jadi tidak boleh ikut
+        # di urgent maupun jumlah status KEAMANAN. Yang terhitung hanya foreign
+        # (GANGGUAN_KEAMANAN, PENDING, MEDIUM) yang dibuat hari ini di setUp.
+        self.client.force_authenticate(self.staff)
+        response = self.client.get(self.summary_url)
+        self.assertEqual(
+            response.data["by_status_per_category"]["KEAMANAN"]["PENDING"], 1
+        )
+        self.assertEqual(response.data["urgent_by_category"]["KEAMANAN"], 0)
+
+        # STUDENT: hanya pengaduannya sendiri yang dihitung, urgent termasuk.
+        # Yaitu laporan PELECEHAN di atas (milik student sendiri, HIGH ->
+        # urgent 1); foreign milik other_student mustahil ikut, tanpa scoping
+        # angka PENDING akan 2.
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.summary_url)
+        self.assertEqual(
+            response.data["by_status_per_category"]["KEAMANAN"]["PENDING"], 1
+        )
+        self.assertEqual(response.data["urgent_by_category"]["KEAMANAN"], 1)
+        self.assertEqual(response.data["urgent_by_category"]["AKADEMIK"], 0)
+
+        # ADMIN: semuanya termasuk laporan PELECEHAN (HIGH -> urgent) dan
+        # foreign.
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.summary_url)
+        self.assertEqual(
+            response.data["by_status_per_category"]["KEAMANAN"]["PENDING"], 2
+        )
+        self.assertEqual(response.data["urgent_by_category"]["KEAMANAN"], 1)
+
     def test_trend_contains_30_daily_buckets_with_newest_last(self):
         self.client.force_authenticate(self.admin)
         response = self.client.get(self.summary_url)
