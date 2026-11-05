@@ -9,10 +9,12 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import axios from "axios"
 
+import { useComplaintSummary } from "../../contexts/ComplaintSummaryContext"
 import { createComplaint, getComplaintCategories, SENSITIVE_IMAGE_SUB_CATEGORIES, type ComplaintCategory } from "../../services/complaintService"
+import { isComplaintCategory } from "../../utils/categoryConfig"
 import { getFacilities, type Facility } from "../../services/facilityService"
 
 // Backend menyimpan title di CharField(max_length=200). Batas yang sama
@@ -83,11 +85,20 @@ function groupByBuilding(facilities: Facility[]) {
 
 function CreateComplaint() {
   const navigate = useNavigate()
+  const { refresh: refreshSummary } = useComplaintSummary()
+  const [searchParams] = useSearchParams()
 
   const [facilities, setFacilities] = useState<Facility[]>([])
   const [categories, setCategories] = useState<ComplaintCategory[]>([])
   const [facilityId, setFacilityId] = useState("")
-  const [category, setCategory] = useState<"FASILITAS" | "AKADEMIK" | "KEAMANAN">("FASILITAS")
+  // ?category= dari sidebar "Buat Laporan <kategori>" mengisi nilai awal
+  // sekali di initializer (bukan effect supaya tidak menimpa pilihan ulang
+  // user). Nilai tidak dikenal di query dulu di-guard isComplaintCategory;
+  // kalau absah, kategori dipakai apa adanya.
+  const [category, setCategory] = useState<"FASILITAS" | "AKADEMIK" | "KEAMANAN">(() => {
+    const queryCategory = searchParams.get("category")
+    return isComplaintCategory(queryCategory) ? queryCategory : "FASILITAS"
+  })
   const [subCategoryId, setSubCategoryId] = useState("")
   const [incidentLocation, setIncidentLocation] = useState("")
   const [incidentDate, setIncidentDate] = useState("")
@@ -279,6 +290,10 @@ function CreateComplaint() {
         image,
       })
 
+      // Badge sidebar harus ikut naik tanpa reload; refresh dipanggil sebelum
+      // navigate supaya sidebar sudah menyegarkan data saat halaman baru
+      // terlihat.
+      refreshSummary()
       navigate("/complaints")
     } catch (requestError: unknown) {
       const response = axios.isAxiosError(requestError)

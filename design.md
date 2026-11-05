@@ -735,7 +735,7 @@ Dashboard, AdminDashboard).
 | --- | --- |
 | Item sidebar (idle) | `.nav-link` + `flex items-center gap-3 rounded-xl border py-3 pl-4 pr-3 text-sm font-medium` |
 | Item sidebar (aktif) | `.nav-link-active .nav-link-accent` |
-| Bar aksen aktif | `::before` 3px × 1.25rem, `#6366f1`, radius penuh, glow, tengah vertikal |
+| Bar aksen aktif | `::before` 3px × 1.25rem, radius penuh, tengah vertikal; warna dari `--nav-accent-color` (default `#6366f1`, glow `--nav-accent-glow`) — submenu kategori menimpa var dengan `chartColor` kategorinya |
 | Ikon nav | `size={18}` |
 | Hover | bg putih `.45`, geser `translateX(2px)` |
 | Tombol logout (sidebar) | native: `rounded-xl px-2.5 py-2 text-sm text-slate-600 hover:bg-white/80 hover:text-slate-900` |
@@ -743,21 +743,62 @@ Dashboard, AdminDashboard).
 
 > `.nav-link:focus-visible` memakai `outline: 2px solid #6366f1; outline-offset: 2px`.
 
-**Isi menu ditentukan role, dalam satu daftar datar.** `navItems` di
-`DashboardLayout` mempunyai `roles: readonly Role[]` per item dan di-filter dengan
-`item.roles.includes(user.role)`. Tidak ada judul grup: label pemisah tidak
-menambah informasi apa pun dan membuat sidebar untuk role dengan satu atau dua
-item terlihat setengah kosong.
+**Isi menu ditentukan role.** Item bagian Umum (`navItems` di
+`DashboardLayout`) mempunyai `roles: readonly Role[]` per item dan di-filter
+dengan `item.roles.includes(user.role)`. Di bawahnya ada tiga grup kategori
+accordion (Keamanan, Fasilitas, Akademik) yang kini jadi bagian tersendiri,
+dipisahkan dari bagian Umum **hanya dengan jarak vertikal (`mt-6 space-y-3`)**:
+tanpa label seksi, judul kecil, garis pemisah, atau dekor pemisah lain —
+pembeda antar grup datang dari warna (kotak ikon ber-tint kategori,
+`chipClassName` dari `CATEGORY_CONFIG`) dan bentuk, bukan dari ornamen.
 
 | Item | STUDENT | STAFF | ADMIN |
 | --- | --- | --- | --- |
 | Dashboard (`/dashboard`) | ya | tidak | tidak |
-| Pengaduan (`/complaints`) | ya | ya | ya |
+| Semua Pengaduan (`/complaints`, badge total) | ya | ya | ya |
 | Profil (`/profile`) | ya | ya | ya |
+| Grup Keamanan / Fasilitas / Akademik (accordion) | ya | ya | ya |
 | Dashboard (`/admin`) | tidak | tidak | ya |
 | Kelola Fasilitas (`/admin/facilities`) | tidak | tidak | ya |
 | Statistik (`/admin/reports`) | tidak | tidak | ya |
 | Kelola Pengguna (`/admin/users`) | tidak | tidak | ya |
+
+Resep grup kategori (`CategoryGroup` di `DashboardLayout`):
+
+- **Header grup** = tombol accordion: kotak ikon `h-9 w-9 rounded-xl`
+  ber-tint kategori (+1px border putih), nama kategori, dot merah kecil
+  (`bg-red-500` + glow, `aria-hidden` + teks sr-only) bila kategori punya
+  pengaduan mendesak, badge total, dan `ChevronDown size={16}` yang berputar
+  saat terbuka (`aria-expanded` + `aria-controls`). Header aktif (route
+  kategori berjalan) memakai `.nav-link-active .nav-link-accent` dengan bar
+  aksen warna kategori via CSS var.
+- **Isi grup**: `Ringkasan` (`/complaints/<slug>`), `Menunggu`
+  (`?status=PENDING`), `Diproses` (`?status=IN_PROGRESS`), `Selesai`
+  (`?status=RESOLVED`), dan `Buat Laporan <kategori>`
+  (`/complaints/create?category=X`). Baris pakai `subRowClass`: indent
+  `pl-11`, `py-2`, `text-[13px]`, ikon `size={15}` warna slate netral — warna
+  status amber/indigo dari StatusBadge sengaja TIDAK dipakai di sini karena
+  bentrok dengan warna kategori (KEAMANAN amber = PENDING amber).
+- **Badge** angka dari `GET /api/complaints/summary/` lewat
+  `ComplaintSummaryProvider`/`useComplaintSummary` (`contexts/`):
+  `total`, `by_category`, `by_status_per_category`, dan `urgent_by_category` —
+  semua sudah ter-scope role di backend. `urgent_by_category` memakai aturan
+  yang sama persis dengan `needsAttention` di `complaintStats.ts` (belum
+  selesai + HIGH atau umur > 3 hari), sehingga dot merah sidebar selalu
+  sejumlah baris panel "Perlu perhatian" kategorinya. Gagal fetch = badge/dot
+  disembunyikan, sidebar tetap utuh. Summary di-refresh setelah
+  create/update/delete pengaduan lewat `refreshSummary()`.
+- **Satu grup terbuka pada satu waktu**; grup route yang aktif otomatis
+  terbuka: kontainer grup kategori di-render dengan `key={route kategori}`
+  sehingga pindah antar route kategori me-remount subtree dan state dibaca
+  ulang dari route tanpa effect tambahan. Grup ditutup pun header tetap
+  menampilkan badge total.
+
+Rute kategori statik: `/complaints/keamanan|fasilitas|akademik` (bukan
+`:category`, agar tidak bentrok `/complaints/:id`); filter kategori + `status`
+dikerjakan di server (`?category=&status=`); link lama
+`/complaints?category=X` dialihkan (replace) ke route baru; select kategori
+di halaman daftar berfungsi sebagai navigasi antar route.
 
 Tiga aturan yang tidak boleh dilanggar:
 

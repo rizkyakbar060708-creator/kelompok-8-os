@@ -41,5 +41,27 @@ export const CATEGORIES: readonly ComplaintCategory[] = [
   "AKADEMIK",
 ];
 
+// Slug route statis per kategori (/complaints/<slug>). Didefinisikan sengaja
+// eksplisit per enum: petanya kelihatan, tanpa fungsi lowercase yang mudah
+// salah ketik. Dipakai sidebar, redirect link lama, dan route generator.
+// Route dinamis /complaints/:id sudah ada, jadi slug tidak pernah dibuat
+// dinamis ":category" agar tidak bentrok.
+export const CATEGORY_SLUGS: Record<ComplaintCategory, string> = {
+  KEAMANAN: "keamanan",
+  FASILITAS: "fasilitas",
+  AKADEMIK: "akademik",
+};
+
+export const categoryPath = (category: ComplaintCategory): string =>
+  `/complaints/${CATEGORY_SLUGS[category]}`;
+
+// Beda dari CATEGORIES.includes: value "all" ikut lolos di sana, dan di sini
+// guard memang khusus untuk nilai query string yang hanya boleh menerima
+// kategori sungguhan.
+export const isComplaintCategory = (
+  value: string | null,
+): value is ComplaintCategory =>
+  value !== null && Object.hasOwn(CATEGORY_CONFIG, value);
+
 export const categoryLabel = (category: ComplaintCategory): string =>
   CATEGORY_CONFIG[category].label;

@@ -343,9 +343,12 @@
     width: 3px;
     height: 1.25rem;
     border-radius: 999px;
-    background: #6366f1;
+    /* Default indigo, overridable lewat --nav-accent-color supaya submenu
+       kategori (Keamanan/Fasilitas/Akademik) bisa menyalakan bar dengan warna
+       kategorinya masing-masing tanpa duplikasi kelas per warna di sini. */
+    background: var(--nav-accent-color, #6366f1);
     transform: translateY(-50%);
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.55);
+    box-shadow: 0 0 10px var(--nav-accent-glow, rgba(99, 102, 241, 0.55));
   }
 
   .nav-link:focus-visible {

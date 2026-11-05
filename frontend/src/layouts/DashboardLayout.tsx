@@ -1,21 +1,29 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom"
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import {
   BarChart3,
   Bell,
+  Building2,
+  ChevronDown,
+  CircleCheck,
   ClipboardList,
+  Clock3,
   FileText,
+  GraduationCap,
   Home,
+  LoaderCircle,
   LogOut,
   Menu,
   PencilRuler,
+  Plus,
   ShieldCheck,
   User,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, type CSSProperties } from "react"
 
+import { useComplaintSummary, ComplaintSummaryProvider } from "../contexts/ComplaintSummaryContext"
 import { useAuth } from "../contexts/AuthContext"
 import {
   ADMIN,
@@ -24,6 +32,16 @@ import {
   roleLabel,
   type Role,
 } from "../utils/roles"
+import {
+  CATEGORIES,
+  CATEGORY_CONFIG,
+  categoryPath,
+  type ComplaintCategory,
+} from "../utils/categoryConfig"
+import type {
+  Complaint,
+  ComplaintSummary,
+} from "../services/complaintService"
 
 const ALL_ROLES = ROLES
 
@@ -33,32 +51,26 @@ interface NavItem {
   icon: LucideIcon;
   roles: readonly Role[];
   // NavLink aktif secara default kalau path-nya prefix dari URL saat ini, jadi
-  // "/admin" ikut menyala saat pengguna berada di "/admin/reports". `end` memaksa
-  // pencocokan persis dan dipakai pada route induk.
+  // "/admin" ikut menyala saat pengguna berada di "/admin/reports". `end`
+  // memaksa pencocokan persis dan dipakai pada route induk.
   end?: boolean;
 }
 
-// Menu ditampilkan sesuai peran, bukan disembunyikan lalu ditolak guard, supaya
-// role tidak melihat tautan ke halaman yang memang bukan halamannya. Ini murni
-// kosmetik: setiap route tetap dijaga ProtectedRoute di AppRoutes, dan filter di
-// sini tidak pernah jadi pengganti otorisasi backend.
+// Bagian Umum tetap datar. Ada dua tautan "Dashboard" di daftar ini, tapi
+// tidak pernah tampil bersamaan: yang pertama hanya untuk STUDENT dan
+// yang kedua (/admin) hanya untuk ADMIN.
 //
-// Item "Dashboard" hanya untuk STUDENT karena /dashboard langsung dialihkan ke
-// /admin untuk admin dan ke /complaints untuk staf. MEMASUKKAN STAFF ke sini
-// hanya membuat tautannya berbalik ke daftar pengaduan begitu diklik.
+// Filter menu di sini murni kosmetik, bukan otorisasi: setiap route tetap
+// dijaga ProtectedRoute di AppRoutes.
 //
-// Daftar datar tanpa judul grup. Label pemisah tidak menambah informasi apa pun
-// dan hanya membuat sidebar terlihat lebih jarang terisi, terutama untuk role
-// yang hanya punya satu atau dua item. Urutannya masih mengikuti urutan grup
-// yang pernah ada, hanya pemisah visualnya yang dihapus.
+// Struktur sidebar: bagian Umum datar di atas, lalu tiga grup kategori
+// accordion di bawahnya. Pembeda antar bagian hanya jarak vertikal (margin) —
+// tanpa label seksi, judul kecil, atau garis pemisah, karena itu semua hanya
+// menambah ornamen tanpa informasi baru. Urutan grup mengikuti CATEGORY_ORDER.
+
 const navItems: readonly NavItem[] = [
   { name: "Dashboard", path: "/dashboard", icon: Home, roles: [STUDENT] },
-  {
-    name: "Pengaduan",
-    path: "/complaints",
-    icon: FileText,
-    roles: ALL_ROLES,
-  },
+  { name: "Semua Pengaduan", path: "/complaints", icon: FileText, roles: ALL_ROLES, end: true },
   { name: "Profil", path: "/profile", icon: User, roles: ALL_ROLES },
   {
     name: "Dashboard",
@@ -87,11 +99,69 @@ const navItems: readonly NavItem[] = [
   },
 ]
 
+// Ikon kotak berwarna di header tiap grup kategori — pembeda visual utama
+// antar grup karena bagian ini sengaja tanpa teks label maupun garis pemisah.
+const CATEGORY_GROUP_ICONS: Record<ComplaintCategory, LucideIcon> = {
+  KEAMANAN: ShieldCheck,
+  FASILITAS: Building2,
+  AKADEMIK: GraduationCap,
+}
+
+// Urutan grup kategori di sidebar (atas ke bawah), terpisah dari urutan chip
+// di halaman lain supaya kalau nanti diurut ulang tidak saling kacau.
+const CATEGORY_ORDER: readonly ComplaintCategory[] = CATEGORIES
+
+interface CategoryStatusRow {
+  label: string;
+  status: Complaint["status"];
+  icon: LucideIcon;
+}
+
+// Baris status pakai ikon netral slate, bukan tint PENDING/Diproses seperti
+// StatusBadge di kartu: KEAMANAN itu amber dan PENDING juga amber di
+// statusConfig, jadi menyalin warna status ke sini berisiko terlihat seperti
+// grup Keamanan yang menyala aneh. Label teks sudah cukup memberi arti.
+const CATEGORY_STATUS_ROWS: readonly CategoryStatusRow[] = [
+  { label: "Menunggu", status: "PENDING", icon: Clock3 },
+  { label: "Diproses", status: "IN_PROGRESS", icon: LoaderCircle },
+  { label: "Selesai", status: "RESOLVED", icon: CircleCheck },
+]
+
 function DashboardLayout() {
+  return (
+    <ComplaintSummaryProvider>
+      <DashboardLayoutShell />
+    </ComplaintSummaryProvider>
+  )
+}
+
+// Komponen grup kategori diberi key dari route yang aktif: setiap kali grup
+// route aktif berubah, subtree di-remount dan state diinisialisasi ulang dari
+// route — itu mekanisme "grup otomatis terbuka" tanpa effect yang menyalin
+// route ke state pada tiap navigasi.
+const categoryForPath = (pathname: string): ComplaintCategory | null =>
+  CATEGORY_ORDER.find((category) =>
+    pathname.startsWith(categoryPath(category)),
+  ) ?? null
+
+function DashboardLayoutShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { summary } = useComplaintSummary()
   const initial = user?.username?.slice(0, 1).toUpperCase() || "U"
+
+  const activeRouteCategory = categoryForPath(location.pathname)
+
+  // Satu grup kategori terbuka dalam satu waktu. Inisialisasi dari route
+  // aktif supaya masuk ke route kategori langsung membuka grupnya; key juga
+  // dibawa di div pembungkus di bawah sehingga pindah antar route kategori
+  // me-remount subtree ini dan state di-reinit dari route, tanpa effect
+  // tambahan yang menyalin route ke state.
+  const [openCategory, setOpenCategory] = useState<ComplaintCategory | null>(
+    activeRouteCategory,
+  )
 
   const handleLogout = () => {
     logout()
@@ -150,28 +220,37 @@ function DashboardLayout() {
           <div className="space-y-1.5">
             {navItems
               .filter((item) => item.roles.includes(user?.role ?? STUDENT))
-              .map((item) => {
-                const Icon = item.icon
+              .map((item) => (
+                <NavRow
+                  key={item.path}
+                  item={item}
+                  badge={item.path === "/complaints" ? summary?.total : undefined}
+                  onNavigate={() => setSidebarOpen(false)}
+                />
+              ))}
+          </div>
 
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    end={item.end}
-                    onClick={() => setSidebarOpen(false)}
-                    className={({ isActive }) =>
-                      `group flex items-center gap-3 rounded-xl border py-3 pl-4 pr-3 text-sm font-medium ${
-                        isActive
-                          ? "nav-link-active nav-link-accent"
-                          : "nav-link"
-                      }`
-                    }
-                  >
-                    <Icon size={18} />
-                    {item.name}
-                  </NavLink>
-                )
-              })}
+          {/* Grup kategori: pembeda terhadap bagian Umum hanya margin ini.
+              key dari route memicu remount (lihat komentar state di atas)
+              sehingga grup route aktif selalu terbuka otomatis. */}
+          <div
+            className="mt-6 space-y-3"
+            key={activeRouteCategory ?? "umum"}
+          >
+            {CATEGORY_ORDER.map((category) => (
+              <CategoryGroup
+                key={category}
+                category={category}
+                isOpen={openCategory === category}
+                onToggle={() =>
+                  setOpenCategory((current) =>
+                    current === category ? null : category,
+                  )
+                }
+                summary={summary}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            ))}
           </div>
         </nav>
 
@@ -249,6 +328,180 @@ function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+    </div>
+  )
+}
+
+function NavRow({
+  item,
+  badge,
+  onNavigate,
+}: {
+  item: NavItem;
+  badge: number | undefined;
+  onNavigate: () => void;
+}) {
+  const Icon = item.icon
+
+  return (
+    <NavLink
+      to={item.path}
+      end={item.end}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        `group flex items-center gap-3 rounded-xl border py-3 pl-4 pr-3 text-sm font-medium ${
+          isActive ? "nav-link-active nav-link-accent" : "nav-link"
+        }`
+      }
+    >
+      <Icon size={18} />
+      <span className="flex-1 truncate">{item.name}</span>
+      <CountBadge value={badge} />
+    </NavLink>
+  )
+}
+
+function CountBadge({ value }: { value: number | undefined }) {
+  if (value === undefined) {
+    return null
+  }
+
+  return (
+    <span className="rounded-full bg-slate-900/[0.06] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-500">
+      {value}
+    </span>
+  )
+}
+
+// Baris di dalam submenu kategori. Indent pl-11 sejajar dengan teks header
+// grup (kotak ikon 36px + gap), ukuran teks dikecilkan satu tingkat supaya
+// tingkat kedua terbaca sebagai isi grup, bukan item sejajar.
+const subRowClass = (active: boolean) =>
+  `flex items-center gap-2.5 rounded-xl border py-2 pl-11 pr-2.5 text-[13px] font-medium ${
+    active ? "nav-link-active nav-link-accent" : "nav-link"
+  }`
+
+function CategoryGroup({
+  category,
+  isOpen,
+  onToggle,
+  summary,
+  onNavigate,
+}: {
+  category: ComplaintCategory;
+  isOpen: boolean;
+  onToggle: () => void;
+  summary: ComplaintSummary | null;
+  onNavigate: () => void;
+}) {
+  const location = useLocation()
+  const path = categoryPath(category)
+  const config = CATEGORY_CONFIG[category]
+  const GroupIcon = CATEGORY_GROUP_ICONS[category]
+  const groupPanelId = `sidebar-group-${category.toLowerCase()}`
+
+  // Bar aktif submenu kategori memakai warna kategorinya, bukan indigo
+  // universal bagian Umum. ::before membaca CSS var, jadi cukup menimpa var
+  // ini di tiap baris submenu (berlaku hanya saat kelas accent ada).
+  const accentStyle = {
+    "--nav-accent-color": config.chartColor,
+    "--nav-accent-glow": `${config.chartColor}8c`,
+  } as CSSProperties
+
+  const headerActive = location.pathname.startsWith(path)
+  const summaryActive =
+    location.pathname === path && location.search === ""
+
+  // urgent_by_category dihitung backend dengan aturan yang sama seperti
+  // needsAttention (belum selesai PENDING/IN_PROGRESS, dan HIGH atau umur
+  // > 3 hari) dari queryset ter-scope role. Dot disembunyikan kalau summary
+  // gagal dimuat supaya tidak pernah ada dot palsu.
+  const urgentCount = summary?.urgent_by_category[category] ?? 0
+  const total = summary?.by_category[category]
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={groupPanelId}
+        style={headerActive ? accentStyle : undefined}
+        className={`group flex w-full items-center gap-3 rounded-xl border py-2 pl-2 pr-2 text-sm font-semibold ${
+          headerActive ? "nav-link-active nav-link-accent" : "nav-link"
+        }`}
+      >
+        <span
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/60 ${config.chipClassName}`}
+        >
+          <GroupIcon size={16} />
+        </span>
+
+        <span className="flex-1 truncate text-left">{config.label}</span>
+
+        {urgentCount > 0 && (
+          <>
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 shrink-0 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]"
+            />
+            {/* Dot di atas aria-hidden; teks ini yang memberi makna ke screen
+                reader tanpa menambah teks visual, sesuai batasan desain. */}
+            <span className="sr-only">Ada pengaduan mendesak</span>
+          </>
+        )}
+
+        <CountBadge value={total} />
+
+        <ChevronDown
+          size={16}
+          className={`shrink-0 text-slate-400 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div id={groupPanelId} className="mt-1 space-y-1">
+          <NavLink
+            to={path}
+            onClick={onNavigate}
+            style={accentStyle}
+            className={subRowClass(summaryActive)}
+          >
+            <span className="flex-1 truncate">Ringkasan</span>
+          </NavLink>
+
+          {CATEGORY_STATUS_ROWS.map(({ label, status, icon: RowIcon }) => (
+            <NavLink
+              key={status}
+              to={`${path}?status=${status}`}
+              onClick={onNavigate}
+              style={accentStyle}
+              // NavLink yang membawa search hanya menyala kalau query-nya
+              // cocok, jadi baris "Menunggu" tidak salah aktif di Ringkasan.
+              className={({ isActive }) => subRowClass(isActive)}
+            >
+              <RowIcon size={15} className="shrink-0 text-slate-500" />
+              <span className="flex-1 truncate">{label}</span>
+              <CountBadge
+                value={summary?.by_status_per_category[category][status]}
+              />
+            </NavLink>
+          ))}
+
+          <NavLink
+            to={`/complaints/create?category=${category}`}
+            onClick={onNavigate}
+            className={subRowClass(false)}
+          >
+            <Plus size={15} className="shrink-0 text-slate-500" />
+            <span className="flex-1 truncate">
+              Buat Laporan {config.label}
+            </span>
+          </NavLink>
+        </div>
+      )}
     </div>
   )
 }

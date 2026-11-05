@@ -84,6 +84,13 @@ function AppRoutes() {
         />
 
         <Route path="/complaints" element={<Complaints />} />
+        {/* Route kategori statis (bukan ":category") supaya tidak bentrok
+            dengan dinamis /complaints/:id yang sudah ada; React Router
+            memprioritaskan segmen statis, tapi eksplisit lebih jelas dan
+            type-safe. */}
+        <Route path="/complaints/keamanan" element={<Complaints category="KEAMANAN" />} />
+        <Route path="/complaints/fasilitas" element={<Complaints category="FASILITAS" />} />
+        <Route path="/complaints/akademik" element={<Complaints category="AKADEMIK" />} />
         <Route path="/complaints/create" element={<CreateComplaint />} />
         <Route path="/complaints/:id" element={<ComplaintDetail />} />
         <Route path="/profile" element={<Profile />} />
