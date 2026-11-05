@@ -15,6 +15,9 @@ import CategoryCard from "../../components/dashboard/CategoryCard"
 import TrendLines from "../../components/charts/TrendLines"
 import Card from "../../components/ui/Card"
 import StatusBadge from "../../components/ui/StatusBadge"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
+import { REVEAL_STAGGER } from "../../lib/motion"
 import { getComplaints } from "../../services/complaintService"
 import { getFacilities } from "../../services/facilityService"
 import { CATEGORIES, CATEGORY_CONFIG } from "../../utils/categoryConfig"
@@ -172,7 +175,7 @@ function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <Reveal as="section" className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end" delay={0}>
         <div>
           <p className="eyebrow mb-2">Ringkasan aktivitas</p>
           <h1 className="page-title">Dashboard</h1>
@@ -185,7 +188,7 @@ function Dashboard() {
           <Plus size={18} />
           Buat Pengaduan
         </Link>
-      </section>
+      </Reveal>
 
       {error && (
         <p className="alert-error" role="alert">
@@ -193,12 +196,16 @@ function Dashboard() {
         </p>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      {/* Grid metrik memakai stagger RevealList: tiap kartu muncul berurutan.
+          Wrapper RevealItem menjadi grid item; Card diberi h-full agar tetap
+          mengisi tinggi kolom seperti sebelum dibungkus wrapper. */}
+      <RevealList as="section" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => {
           const Icon = metric.icon
 
           return (
-            <Card key={metric.label} className="group relative overflow-hidden">
+            <RevealItem key={metric.label}>
+              <Card className="group relative h-full overflow-hidden">
               <span
                 className={`orb -right-9 -top-9 h-28 w-28 ${metric.orb} transition-transform duration-500 ease-out group-hover:scale-125`}
               />
@@ -220,30 +227,33 @@ function Dashboard() {
                   <Icon size={20} />
                 </span>
               </div>
-            </Card>
+              </Card>
+            </RevealItem>
           )
         })}
-      </section>
+      </RevealList>
 
       {/* Tiga kartu kategori memakai sparkline 7 hari dari buildCategoryStats. */}
-      <section className="grid gap-4 md:grid-cols-3">
+      <RevealList as="section" className="grid gap-4 md:grid-cols-3">
         {CATEGORIES.map((category) => (
-          <CategoryCard
-            key={category}
-            stat={categoryStats[category]}
-            active={false}
-            onSelect={() => {
-              // Klik kartu kategori mahasiswa cukup membawa ke daftar
-              // pengaduan miliknya; filter kategori lanjutan ada di sana.
-              navigate("/complaints")
-            }}
-          />
+          <RevealItem key={category}>
+            <CategoryCard
+              stat={categoryStats[category]}
+              active={false}
+              onSelect={() => {
+                // Klik kartu kategori mahasiswa cukup membawa ke daftar
+                // pengaduan miliknya; filter kategori lanjutan ada di sana.
+                navigate("/complaints")
+              }}
+            />
+          </RevealItem>
         ))}
-      </section>
+      </RevealList>
 
-      <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <Card className="relative overflow-hidden">
-          <span className="orb -bottom-12 -left-10 h-32 w-32 bg-emerald-400/20" />
+      <RevealList className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+        <RevealItem>
+          <Card className="relative h-full overflow-hidden">
+            <span className="orb -bottom-12 -left-10 h-32 w-32 bg-emerald-400/20" />
 
           <div className="relative">
             <div className="flex items-start justify-between gap-4">
@@ -339,9 +349,11 @@ function Dashboard() {
             </div>
           )}
         </Card>
-      </section>
+        </RevealItem>
+      </RevealList>
 
-      <Card className="relative overflow-hidden">
+      <Reveal delay={REVEAL_STAGGER * 3}>
+        <Card className="relative overflow-hidden">
         <span className="orb -right-10 -top-10 h-36 w-36 bg-amber-300/25" />
 
         <div className="relative flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
@@ -364,7 +376,8 @@ function Dashboard() {
             Buat laporan
           </Link>
         </div>
-      </Card>
+        </Card>
+      </Reveal>
     </div>
   )
 }
