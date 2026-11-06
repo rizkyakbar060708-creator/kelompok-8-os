@@ -58,6 +58,7 @@ urlpatterns = [
 
     path("api/facilities/", include("apps.facilities.urls")),
     path("api/complaints/", include("apps.complaints.urls")),
+    path("api/lost-found/", include("apps.lostfound.urls")),
 ]
 
 # Django tidak menyajikan MEDIA_ROOT sendiri. static() sengaja hanya aktif saat
