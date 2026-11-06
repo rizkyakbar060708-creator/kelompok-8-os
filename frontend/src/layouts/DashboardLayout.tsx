@@ -13,6 +13,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  PackageSearch,
   PencilRuler,
   Plus,
   ShieldCheck,
@@ -71,6 +72,9 @@ interface NavItem {
 const navItems: readonly NavItem[] = [
   { name: "Dashboard", path: "/dashboard", icon: Home, roles: [STUDENT] },
   { name: "Semua Pengaduan", path: "/complaints", icon: FileText, roles: ALL_ROLES, end: true },
+  // Item ini path datar tanpa query string, jadi NavLink bawaan sudah cukup
+  // untuk aktivasi tanpa opsi `end` tambahan (tidak ada route turunannya).
+  { name: "Lost & Found", path: "/lost-found", icon: PackageSearch, roles: ALL_ROLES },
   { name: "Profil", path: "/profile", icon: User, roles: ALL_ROLES },
   {
     name: "Dashboard",
