@@ -20,6 +20,11 @@ import {
   type Facility,
   type FacilityStatus,
 } from "../../services/facilityService"
+import {
+  FACILITY_STATUS_META as statusMeta,
+  FACILITY_STATUS_OPTIONS as STATUS_OPTIONS,
+  KNOWN_FACILITY_STATUSES as KNOWN_STATUSES,
+} from "../../utils/facilityStatus"
 
 type FacilityDraft = {
   name: string
@@ -35,38 +40,7 @@ const EMPTY_DRAFT: FacilityDraft = {
   status: "ACTIVE",
 }
 
-const STATUS_OPTIONS: { value: FacilityStatus; label: string; hint: string }[] = [
-  {
-    value: "ACTIVE",
-    label: "Aktif",
-    hint: "Fasilitas bisa dipakai dan menerima pengaduan",
-  },
-  {
-    value: "MAINTENANCE",
-    label: "Perawatan",
-    hint: "Sedang diperbaiki, pengaduan masih bisa dibuat",
-  },
-  {
-    value: "INACTIVE",
-    label: "Nonaktif",
-    hint: "Tidak dipakai lagi",
-  },
-]
-
-// Backend menyimpan Facility.status sebagai CharField tanpa choices, jadi nilai
-// di luar tiga ini akan diterima apa adanya. Filter di sini tetap eksplisit
-// supaya option yang tidak dikenal tidak tampil sebagai chip kosong.
-const KNOWN_STATUSES: readonly FacilityStatus[] = [
-  "ACTIVE",
-  "MAINTENANCE",
-  "INACTIVE",
-]
-
-const statusMeta: Record<FacilityStatus, { label: string; className: string }> = {
-  ACTIVE: { label: "Aktif", className: "bg-emerald-100 text-emerald-700" },
-  MAINTENANCE: { label: "Perawatan", className: "bg-amber-100 text-amber-700" },
-  INACTIVE: { label: "Nonaktif", className: "bg-slate-100 text-slate-600" },
-}
+// Status fasilitas kini dipusatkan di utils/facilityStatus.ts
 
 function FacilitiesAdmin() {
   const [facilities, setFacilities] = useState<Facility[] | null>(null)

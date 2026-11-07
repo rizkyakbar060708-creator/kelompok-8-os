@@ -142,6 +142,18 @@ function CreateComplaint() {
 
         if (active) {
           setFacilities(data.items)
+          const targetFacilityId = searchParams.get("facility")
+          // Prefill dilakukan hanya setelah fasilitas selesai dimuat di callback async ini,
+          // divalidasi ketersediaan id-nya, dan tidak menimpa pilihan user sesudahnya.
+          if (targetFacilityId) {
+            setFacilityId((prev) => {
+              if (!prev && data.items.some((f) => String(f.id) === targetFacilityId)) {
+                setCategory("FASILITAS")
+                return targetFacilityId
+              }
+              return prev
+            })
+          }
         }
       } catch {
         if (active) {
@@ -159,7 +171,7 @@ function CreateComplaint() {
     return () => {
       active = false
     }
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     let active = true

@@ -15,6 +15,7 @@ import Complaints from "../pages/user/Complaints";
 import Profile from "../pages/user/Profile";
 import CreateComplaint from "../pages/user/CreateComplaint";
 import ComplaintDetail from "../pages/user/ComplaintDetail";
+import FloorPlan from "../pages/user/FloorPlan";
 
 import DashboardRedirector from "../components/auth/DashboardRedirector";
 
@@ -93,6 +94,7 @@ function AppRoutes() {
         <Route path="/complaints/akademik" element={<Complaints category="AKADEMIK" />} />
         <Route path="/complaints/create" element={<CreateComplaint />} />
         <Route path="/complaints/:id" element={<ComplaintDetail />} />
+        <Route path="/denah" element={<FloorPlan />} />
         <Route path="/profile" element={<Profile />} />
       </Route>
 

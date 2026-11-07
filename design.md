@@ -756,6 +756,7 @@ pembeda antar grup datang dari warna (kotak ikon ber-tint kategori,
 | --- | --- | --- | --- |
 | Dashboard (`/dashboard`) | ya | tidak | tidak |
 | Semua Pengaduan (`/complaints`, badge total) | ya | ya | ya |
+| Denah Gedung (`/denah`) | ya | ya | ya |
 | Profil (`/profile`) | ya | ya | ya |
 | Grup Keamanan / Fasilitas / Akademik (accordion) | ya | ya | ya |
 | Dashboard (`/admin`) | tidak | tidak | ya |
@@ -1043,6 +1044,43 @@ Aturan:
 ```
 
 > Perhatikan: ini **gaya spinner keempat** yang berbeda dari tiga lainnya (§13.2).
+
+### 8.9 Pola Denah Gedung (`FloorPlan`, `/denah`)
+
+Halaman denah interaktif Gedung B FTI untuk seluruh pengguna terautentikasi (`ALL_ROLES`).
+
+```
+.mx-auto max-w-7xl space-y-6
+├── 4 × .orb dekorasi latar (fixed/ambient, aria-hidden="true")
+├── header  flex flex-col justify-between gap-5 sm:flex-row sm:items-end
+│   ├── eyebrow "Navigasi Fasilitas" + page-title "Denah Gedung B FTI" + subtitle
+│   └── tablist lantai  role="tablist" (.glass-panel rounded-2xl p-1.5, .glass-pill per lantai)
+├── alert-error (bila gagal memuat fasilitas, dengan tombol "Coba lagi")
+├── catatan paginasi (bila isPaginated)
+├── legenda tipe ruang  .glass-panel rounded-2xl (Kelas, Lab, Layanan, Penyimpanan, Tangga)
+├── grid denah 2D  .glass-panel rounded-3xl p-5 sm:p-8
+│   └── grid 9 baris: tombol ruangan interaktif (row-span) + baris 5 pemisah Tangga
+├── panel fasilitas tingkat lantai  (hanya muncul bila ada fasilitas di lantai tanpa ruang spesifik)
+├── panel admin fasilitas belum terpetakan  (hanya tampil untuk role ADMIN)
+└── Modal detail ruangan  (judul kode · nama, badge tipe, daftar fasilitas, tombol "Laporkan masalah")
+```
+
+Aturan visual & interaksi denah:
+1. **Warna tipe ruang memakai tint spesifik**:
+   - `kelas`: `border-indigo-200 bg-indigo-50/90 text-indigo-900`
+   - `lab`: `border-violet-200 bg-violet-50/90 text-violet-900`
+   - `layanan`: `border-sky-200 bg-sky-50/90 text-sky-900`
+   - `penyimpanan`: `border-slate-200 bg-slate-50/90 text-slate-900`
+   - **Dilarang memakai warna status pengaduan** (amber/biru/emerald/merah) maupun warna kategori sidebar.
+2. **Baris 5 adalah Tangga non-interaktif** sebagai pemisah vertikal antar sisi denah (hanya pada Lantai 1, 2, dan 3).
+3. **Lantai 4 hanya menampilkan ruang yang ada pada sumber**: hanya memuat B4.1 dan B4.2 (tipe kelas) tanpa baris tangga atau slot placeholder fiktif, disertai catatan informasi "Denah lantai ini belum lengkap pada sumber".
+4. **Tombol "Laporkan masalah" disembunyikan untuk STAFF** dan untuk fasilitas berstatus **`INACTIVE`** (dengan keterangan teks nonaktif). Fasilitas `MAINTENANCE` tetap diizinkan untuk dilaporkan.
+5. **Pencocokan lokasi ketat**: lokasi fasilitas wajib menyebutkan "Gedung B" (atau variasinya); lokasi tanpa nama gedung dianggap belum terpetakan. Titik kode ruang selalu di-escape, batas depan dan belakang regex mencegah tabrakan prefix (misal `Ruang 1` tidak cocok dengan `Ruang 10`..`Ruang 13`).
+6. **Strategi Responsif**:
+   - Mobile (320px): Kontainer grid scroll horizontal aman (`overflow-x-auto min-w-[280px]`), padding kompak (`p-3.5`), seluruh halaman terlindungi dari scroll horizontal luar (`overflow-x-hidden`).
+   - Tablet (768px): Ruang visual lebih lapang (`sm:min-w-[480px]`), grid fasilitas tingkat lantai 2 kolom.
+   - Desktop (1440px): Lebar maksimal terpusat `max-w-7xl`, grid fasilitas 3 kolom, min-row height 60px.
+7. **Panel fasilitas belum terpetakan hanya dirender untuk role ADMIN** (`isAdmin(user?.role)`), memuat nama, lokasi saat ini, dan tautan ke `/admin/facilities`.
 
 ### 8.8 Pola halaman Kelola Pengguna (`/admin/users`)
 

@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Home,
   LoaderCircle,
+  Map,
   LogOut,
   Menu,
   PencilRuler,
@@ -71,6 +72,7 @@ interface NavItem {
 const navItems: readonly NavItem[] = [
   { name: "Dashboard", path: "/dashboard", icon: Home, roles: [STUDENT] },
   { name: "Semua Pengaduan", path: "/complaints", icon: FileText, roles: ALL_ROLES, end: true },
+  { name: "Denah Gedung", path: "/denah", icon: Map, roles: ALL_ROLES },
   { name: "Profil", path: "/profile", icon: User, roles: ALL_ROLES },
   {
     name: "Dashboard",
