@@ -1052,9 +1052,8 @@ Halaman denah interaktif Gedung B FTI untuk seluruh pengguna terautentikasi (`AL
 ```
 .mx-auto max-w-7xl space-y-6
 ├── 4 × .orb dekorasi latar (fixed/ambient, aria-hidden="true")
-├── header  flex flex-col justify-between gap-5 sm:flex-row sm:items-end
-│   ├── eyebrow "Navigasi Fasilitas" + page-title "Denah Gedung B FTI" + subtitle
-│   └── tablist lantai  role="tablist" (.glass-panel rounded-2xl p-1.5, .glass-pill per lantai)
+├── Floor Mode Switcher  role="tablist" di kiri atas area konten (.glass-panel rounded-2xl, 4 mode: Semua Lantai, Lantai 1, 2, 3)
+├── header  eyebrow + page-title "Prodi TI & Prodi SI FTI UNISKA" + subtitle
 ├── alert-error (bila gagal memuat fasilitas, dengan tombol "Coba lagi")
 ├── catatan paginasi (bila isPaginated)
 ├── legenda tipe ruang  .glass-panel rounded-2xl (Kelas, Lab, Layanan, Penyimpanan, Tangga)
@@ -1073,7 +1072,7 @@ Aturan visual & interaksi denah:
    - `penyimpanan`: `border-slate-200 bg-slate-50/90 text-slate-900`
    - **Dilarang memakai warna status pengaduan** (amber/biru/emerald/merah) maupun warna kategori sidebar.
 2. **Baris 5 adalah Tangga non-interaktif** sebagai pemisah vertikal antar sisi denah (hanya pada Lantai 1, 2, dan 3).
-3. **Lantai 4 hanya menampilkan ruang yang ada pada sumber**: hanya memuat B4.1 dan B4.2 (tipe kelas) tanpa baris tangga atau slot placeholder fiktif, disertai catatan informasi "Denah lantai ini belum lengkap pada sumber".
+3. **Floor Mode Switcher (4 Mode)**: Terletak di kiri atas area konten tepat di sebelah sidebar, satu baris horizontal, memuat 4 mode: *Semua Lantai* (default, menampilkan 4 kolom utuh termasuk B4.1 & B4.2 di kolom ke-4), *Lantai 1*, *Lantai 2*, dan *Lantai 3* (masing-masing hanya merender ruangan lantai tersebut).
 4. **Tombol "Laporkan masalah" disembunyikan untuk STAFF** dan untuk fasilitas berstatus **`INACTIVE`** (dengan keterangan teks nonaktif). Fasilitas `MAINTENANCE` tetap diizinkan untuk dilaporkan.
 5. **Pencocokan lokasi ketat**: lokasi fasilitas wajib menyebutkan "Gedung B" (atau variasinya); lokasi tanpa nama gedung dianggap belum terpetakan. Titik kode ruang selalu di-escape, batas depan dan belakang regex mencegah tabrakan prefix (misal `Ruang 1` tidak cocok dengan `Ruang 10`..`Ruang 13`).
 6. **Strategi Responsif**:

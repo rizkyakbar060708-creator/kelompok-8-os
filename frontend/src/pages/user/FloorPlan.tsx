@@ -5,7 +5,6 @@ import {
   CircleAlert,
   Compass,
   ExternalLink,
-  Info,
   MapPin,
   RefreshCw,
   SearchX,
@@ -20,7 +19,6 @@ import { useAuth } from "../../contexts/AuthContext"
 import { getFacilities, type Facility } from "../../services/facilityService"
 import { getFacilityStatusMeta } from "../../utils/facilityStatus"
 import {
-  FLOORS,
   ROOM_TYPE_CONFIG,
   STAIR_ROW,
   facilitiesForRoom,
@@ -33,11 +31,13 @@ import {
 } from "../../utils/floorPlan"
 import { isAdmin, STAFF } from "../../utils/roles"
 
-type ViewTab = "ALL" | FloorNumber
+// 4 Mode Tampilan: Semua Lantai, Lantai 1, Lantai 2, Lantai 3
+const FLOOR_MODES = ["ALL", 1, 2, 3] as const
+type FloorMode = (typeof FLOOR_MODES)[number]
 
 function FloorPlan() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<ViewTab>("ALL")
+  const [activeMode, setActiveMode] = useState<FloorMode>("ALL")
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
 
   const [facilities, setFacilities] = useState<Facility[] | null>(null)
@@ -88,7 +88,7 @@ function FloorPlan() {
 
   const isStaff = user?.role === STAFF
 
-  // Render konten kartu ruangan yang disesuaikan persis dengan gambar sumber
+  // Render teks dan hierarki sel ruangan persis sesuai gambar sumber
   const renderRoomContent = (room: Room) => {
     if (room.id === "l1-dekan-akademik") {
       return (
@@ -148,7 +148,6 @@ function FloorPlan() {
         }}
         className={`group relative flex flex-col justify-between rounded-xl border p-2 text-center transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 ${config.cardClass}`}
       >
-        {/* Badge indikator jumlah fasilitas (kecil di pojok kanan atas) */}
         {facilityCount > 0 && (
           <span
             className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full border border-slate-900/[0.08] bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-xs"
@@ -184,62 +183,46 @@ function FloorPlan() {
         className="orb pointer-events-none -bottom-20 right-10 h-72 w-72 bg-purple-400/15"
       />
 
-      {/* Header halaman */}
-      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div>
-          <p className="eyebrow mb-1">Denah Kelas Reguler Siang Banjarmasin</p>
-          <h1 className="page-title text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-            Prodi TI & Prodi SI FTI UNISKA
-          </h1>
-          <p className="page-subtitle mt-1">
-            Denah interaktif fasilitas dan ruang perkuliahan Gedung B.
-          </p>
-        </div>
-
-        {/* Tab pemilihan tampilan (Semua Lantai / Per Lantai) */}
+      {/* 1. Floor Mode Switcher — Di bagian kiri atas area konten, tepat di sebelah kanan sidebar */}
+      <div className="flex items-center justify-start">
         <div
           role="tablist"
-          aria-label="Pilih lantai denah"
-          className="glass-panel flex flex-wrap items-center gap-1.5 rounded-2xl p-1.5"
+          aria-label="Mode denah lantai"
+          className="glass-panel inline-flex flex-wrap items-center gap-1.5 rounded-2xl p-1.5 shadow-xs"
         >
-          <button
-            type="button"
-            role="tab"
-            id="floor-tab-all"
-            aria-selected={activeTab === "ALL"}
-            aria-controls="floor-panel-all"
-            onClick={() => setActiveTab("ALL")}
-            className={`glass-pill border-white/70 px-3.5 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
-              activeTab === "ALL"
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
-                : "bg-white/60 text-slate-700 hover:bg-white hover:text-slate-900"
-            }`}
-          >
-            Semua Lantai
-          </button>
-
-          {FLOORS.map((floor) => {
-            const isSelected = activeTab === floor
+          {FLOOR_MODES.map((mode) => {
+            const isSelected = activeMode === mode
             return (
               <button
-                key={floor}
+                key={mode}
                 type="button"
                 role="tab"
-                id={`floor-tab-${floor}`}
+                id={`floor-mode-${mode}`}
                 aria-selected={isSelected}
-                aria-controls={`floor-panel-${floor}`}
-                onClick={() => setActiveTab(floor)}
-                className={`glass-pill border-white/70 px-3 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                aria-controls="floor-mode-content"
+                onClick={() => setActiveMode(mode)}
+                className={`glass-pill border-white/70 px-4 py-2 text-xs font-semibold transition-all sm:text-sm ${
                   isSelected
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
                     : "bg-white/60 text-slate-700 hover:bg-white hover:text-slate-900"
                 }`}
               >
-                Lantai {floor}
+                {mode === "ALL" ? "Semua Lantai" : `Lantai ${mode}`}
               </button>
             )
           })}
         </div>
+      </div>
+
+      {/* 2. Header halaman */}
+      <div>
+        <p className="eyebrow mb-1">Denah Kelas Reguler Siang Banjarmasin</p>
+        <h1 className="page-title text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+          Prodi TI & Prodi SI FTI UNISKA
+        </h1>
+        <p className="page-subtitle mt-1">
+          Denah interaktif fasilitas dan ruang perkuliahan Gedung B.
+        </p>
       </div>
 
       {/* State Error bila gagal memuat fasilitas */}
@@ -306,8 +289,13 @@ function FloorPlan() {
         </div>
       </div>
 
-      {/* Area Utama: Denah Gedung B */}
-      <div className="glass-panel relative overflow-hidden rounded-3xl p-4 sm:p-7">
+      {/* 3. Area Utama: Denah Gedung B */}
+      <div
+        id="floor-mode-content"
+        role="region"
+        aria-label="Denah Gedung B"
+        className="glass-panel relative overflow-hidden rounded-3xl p-4 sm:p-7"
+      >
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Spinner size={32} />
@@ -320,9 +308,9 @@ function FloorPlan() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-900/[0.06] pb-3">
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-slate-900">
-                  {activeTab === "ALL"
-                    ? "Denah Lengkap Gedung B FTI (Lantai 1–4)"
-                    : `Potongan Denah — Lantai ${activeTab}`}
+                  {activeMode === "ALL"
+                    ? "Denah Lengkap Gedung B FTI (Semua Lantai)"
+                    : `Potongan Denah — Lantai ${activeMode}`}
                 </h2>
                 <p className="text-xs text-slate-600">
                   Klik pada ruangan untuk melihat daftar fasilitas di dalamnya.
@@ -330,8 +318,8 @@ function FloorPlan() {
               </div>
             </div>
 
-            {/* TAMPILAN 1: SEMUA LANTAI (SESUAI GAMBAR SUMBER 4 KOLOM) */}
-            {activeTab === "ALL" && (
+            {/* MODE 1: SEMUA LANTAI (4 KOLOM SESUAI GAMBAR SUMBER DENGAN B4.1 & B4.2) */}
+            {activeMode === "ALL" && (
               <div className="overflow-x-auto pb-4">
                 <div className="flex items-stretch gap-3 min-w-[760px] lg:min-w-[880px] justify-center mx-auto">
                   {/* Label vertikal GEDUNG B di sisi kiri */}
@@ -418,7 +406,7 @@ function FloorPlan() {
                       </div>
                     </div>
 
-                    {/* KOLOM 4: LANTAI 4 (HANYA BARIS 8 DAN 9) */}
+                    {/* KOLOM 4: LANTAI 4 (B4.1 DAN B4.2 PADA BARIS 8 DAN 9) */}
                     <div className="flex flex-col">
                       <div className="rounded-t-xl bg-slate-200/80 border border-slate-300/80 p-2 text-center font-bold text-xs uppercase tracking-wider text-slate-800 mb-1.5">
                         Lantai 4
@@ -429,7 +417,6 @@ function FloorPlan() {
                           gridTemplateRows: "repeat(9, minmax(56px, 1fr))",
                         }}
                       >
-                        {/* Baris 1-7 kosong/area luar denah */}
                         {getRoomsForFloor(4).map((room) => (
                           <RoomButton key={room.id} room={room} />
                         ))}
@@ -440,55 +427,30 @@ function FloorPlan() {
               </div>
             )}
 
-            {/* TAMPILAN 2: FOKUS SATU LANTAI */}
-            {activeTab !== "ALL" && (
+            {/* MODE 2, 3, 4: FOKUS SATU LANTAI (LANTAI 1, LANTAI 2, ATAU LANTAI 3) */}
+            {activeMode !== "ALL" && (
               <div className="space-y-4">
-                {activeTab === 4 && (
-                  <div className="flex items-center gap-2.5 rounded-2xl border border-sky-200/80 bg-sky-50/80 px-4 py-3 text-xs text-sky-900">
-                    <Info size={16} className="shrink-0 text-sky-600" />
-                    <p className="font-medium">
-                      Denah lantai ini belum lengkap pada sumber. Hanya memuat ruang
-                      B4.1 dan B4.2 tanpa data area lainnya.
-                    </p>
-                  </div>
-                )}
-
                 <div className="overflow-x-auto pb-2">
                   <div
                     className="grid gap-2.5 min-w-[280px] sm:min-w-[460px] max-w-2xl mx-auto"
                     style={{
-                      gridTemplateRows:
-                        activeTab === 4
-                          ? "repeat(2, minmax(64px, auto))"
-                          : "repeat(9, minmax(56px, auto))",
+                      gridTemplateRows: "repeat(9, minmax(56px, auto))",
                     }}
                   >
-                    {getRoomsForFloor(activeTab).map((room) => (
-                      <RoomButton
-                        key={room.id}
-                        room={
-                          activeTab === 4
-                            ? {
-                                ...room,
-                                rowStart: room.id === "b4-1" ? 1 : 2,
-                                rowSpan: 1,
-                              }
-                            : room
-                        }
-                      />
+                    {/* Hanya menampilkan ruangan lantai terpilih */}
+                    {getRoomsForFloor(activeMode as FloorNumber).map((room) => (
+                      <RoomButton key={room.id} room={room} />
                     ))}
 
-                    {/* Baris 5 Tangga (hanya untuk Lantai 1, 2, 3) */}
-                    {activeTab !== 4 && (
-                      <div
-                        style={{ gridRow: `${STAIR_ROW} / span 1` }}
-                        aria-hidden="true"
-                        className="flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50/90 py-2.5 px-4 text-center font-bold text-xs uppercase tracking-wider text-red-600 select-none shadow-xs"
-                      >
-                        <ArrowUpDown size={15} className="text-red-500" />
-                        <span>TANGGA / LANTAI {activeTab}</span>
-                      </div>
-                    )}
+                    {/* Tangga baris 5 untuk Lantai 1, 2, atau 3 */}
+                    <div
+                      style={{ gridRow: `${STAIR_ROW} / span 1` }}
+                      aria-hidden="true"
+                      className="flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50/90 py-2.5 px-4 text-center font-bold text-xs uppercase tracking-wider text-red-600 select-none shadow-xs"
+                    >
+                      <ArrowUpDown size={15} className="text-red-500" />
+                      <span>TANGGA / LANTAI {activeMode}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -500,9 +462,9 @@ function FloorPlan() {
       {/* Bagian Fasilitas Tingkat Lantai (Bila ada yang hanya mencantumkan lantai) */}
       {(() => {
         const relevantFloorFacilities =
-          activeTab === "ALL"
-            ? FLOORS.flatMap((f) => floorLevelFacilities(f, allFacilities))
-            : floorLevelFacilities(activeTab, allFacilities)
+          activeMode === "ALL"
+            ? [1, 2, 3].flatMap((f) => floorLevelFacilities(f as FloorNumber, allFacilities))
+            : floorLevelFacilities(activeMode as FloorNumber, allFacilities)
 
         if (relevantFloorFacilities.length === 0) return null
 
@@ -511,9 +473,9 @@ function FloorPlan() {
             <div className="flex items-center gap-2 text-slate-900 font-semibold text-base">
               <MapPin size={18} className="text-indigo-600" />
               <h3>
-                {activeTab === "ALL"
+                {activeMode === "ALL"
                   ? "Fasilitas Tingkat Lantai (Ruang Belum Ditentukan)"
-                  : `Fasilitas di Lantai ${activeTab} (Ruang Belum Ditentukan)`}
+                  : `Fasilitas di Lantai ${activeMode} (Ruang Belum Ditentukan)`}
               </h3>
             </div>
             <p className="text-xs text-slate-600">
