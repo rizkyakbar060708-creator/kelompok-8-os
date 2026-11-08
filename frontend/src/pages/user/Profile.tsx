@@ -2,6 +2,8 @@ import { CalendarClock, IdCard, LogOut, ShieldCheck, UserRound } from "lucide-re
 import { useNavigate } from "react-router-dom"
 
 import Card from "../../components/ui/Card"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
 import { useAuth } from "../../contexts/AuthContext"
 import { roleLabel } from "../../utils/roles"
 
@@ -28,13 +30,15 @@ function Profile() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <p className="eyebrow mb-2">Akun saya</p>
+      <Reveal as="section" className="flex flex-col gap-2" delay={0}>
+        <div>
+          <p className="eyebrow mb-2">Akun saya</p>
 
-        <h1 className="page-title">Profil</h1>
+          <h1 className="page-title">Profil</h1>
 
-        <p className="page-subtitle">Kelola informasi akun CampusCare kamu.</p>
-      </div>
+          <p className="page-subtitle">Kelola informasi akun CampusCare kamu.</p>
+        </div>
+      </Reveal>
 
       <Card className="relative overflow-hidden">
         <span className="orb -right-12 -top-14 h-44 w-44 bg-violet-400/28" />
@@ -62,31 +66,33 @@ function Profile() {
         </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <RevealList as="section" className="grid gap-4 sm:grid-cols-2">
         {details.map((detail) => {
           const Icon = detail.icon
 
           return (
-            <Card key={detail.label}>
-              <div className="flex items-center gap-4">
-                <span className="glass-chip h-11 w-11 shrink-0 border-white/70 bg-white/65 text-indigo-600">
-                  <Icon size={19} />
-                </span>
+            <RevealItem key={detail.label}>
+              <Card key={detail.label}>
+                <div className="flex items-center gap-4">
+                  <span className="glass-chip h-11 w-11 shrink-0 border-white/70 bg-white/65 text-indigo-600">
+                    <Icon size={19} />
+                  </span>
 
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
-                    {detail.label}
-                  </p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
+                      {detail.label}
+                    </p>
 
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-800">
-                    {detail.value}
-                  </p>
+                    <p className="mt-1 truncate text-sm font-semibold text-slate-800">
+                      {detail.value}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            </RevealItem>
           )
         })}
-      </div>
+      </RevealList>
 
       <p className="text-xs leading-5 text-slate-500">
         Status aktif/nonaktif akun belum ditampilkan karena backend belum

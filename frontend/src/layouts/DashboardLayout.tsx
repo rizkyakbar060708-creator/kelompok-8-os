@@ -24,6 +24,9 @@ import {
 } from "lucide-react"
 import { useState, type CSSProperties } from "react"
 
+import Reveal from "../components/ui/Reveal"
+import RevealList, { RevealItem } from "../components/ui/RevealList"
+
 import { useComplaintSummary, ComplaintSummaryProvider } from "../contexts/ComplaintSummaryContext"
 import { useAuth } from "../contexts/AuthContext"
 import {
@@ -45,6 +48,11 @@ import type {
 } from "../services/complaintService"
 
 const ALL_ROLES = ROLES
+
+// Jeda antar kelompok animasi layout (sidebar, topbar) dalam detik. Dipakai
+// Reveal sebagai delay berjenjang supaya elemen muncul berurutan, bukan
+// serentak.
+const REVEAL_STAGGER = 0.08
 
 interface NavItem {
   name: string;
@@ -192,46 +200,53 @@ function DashboardLayoutShell() {
         className={`glass-sidebar fixed inset-y-0 left-0 z-50 flex w-[17.5rem] transform flex-col text-slate-700 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex h-20 items-center justify-between border-b border-white/45 px-5">
-          <NavLink
-            to="/dashboard"
-            className="flex items-center gap-3"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="brand-mark h-10 w-10 rounded-xl">
-              <ClipboardList size={20} />
-            </span>
-
-            <span>
-              <span className="block text-[15px] font-bold tracking-tight text-slate-900">
-                CampusCare
+          <Reveal as="div" className="flex items-center gap-3" delay={0}>
+            <NavLink
+              to="/dashboard"
+              className="flex items-center gap-3"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <span className="brand-mark h-10 w-10 rounded-xl">
+                <ClipboardList size={20} />
               </span>
-              <span className="block text-[11px] font-medium text-slate-500">
-                Fasilitas Kampus
-              </span>
-            </span>
-          </NavLink>
 
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="icon-button p-2 lg:hidden"
-            aria-label="Tutup menu"
-          >
-            <X size={20} />
-          </button>
+              <span>
+                <span className="block text-[15px] font-bold tracking-tight text-slate-900">
+                  CampusCare
+                </span>
+                <span className="block text-[11px] font-medium text-slate-500">
+                  Fasilitas Kampus
+                </span>
+              </span>
+            </NavLink>
+          </Reveal>
+
+          <Reveal delay={REVEAL_STAGGER}>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="icon-button p-2 lg:hidden"
+              aria-label="Tutup menu"
+            >
+              <X size={20} />
+            </button>
+          </Reveal>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-7">
           <div className="space-y-1.5">
-            {navItems
-              .filter((item) => item.roles.includes(user?.role ?? STUDENT))
-              .map((item) => (
-                <NavRow
-                  key={item.path}
-                  item={item}
-                  badge={item.path === "/complaints" ? summary?.total : undefined}
-                  onNavigate={() => setSidebarOpen(false)}
-                />
-              ))}
+            <RevealList as="div" className="space-y-1.5">
+              {navItems
+                .filter((item) => item.roles.includes(user?.role ?? STUDENT))
+                .map((item) => (
+                  <RevealItem key={item.path}>
+                    <NavRow
+                      item={item}
+                      badge={item.path === "/complaints" ? summary?.total : undefined}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
+                  </RevealItem>
+                ))}
+            </RevealList>
           </div>
 
           {/* Grup kategori: pembeda terhadap bagian Umum hanya margin ini.
@@ -241,25 +256,29 @@ function DashboardLayoutShell() {
             className="mt-6 space-y-3"
             key={activeRouteCategory ?? "umum"}
           >
-            {CATEGORY_ORDER.map((category) => (
-              <CategoryGroup
-                key={category}
-                category={category}
-                isOpen={openCategory === category}
-                onToggle={() =>
-                  setOpenCategory((current) =>
-                    current === category ? null : category,
-                  )
-                }
-                summary={summary}
-                onNavigate={() => setSidebarOpen(false)}
-              />
-            ))}
+            <RevealList as="div" className="space-y-3">
+              {CATEGORY_ORDER.map((category) => (
+                <RevealItem key={category}>
+                  <CategoryGroup
+                    category={category}
+                    isOpen={openCategory === category}
+                    onToggle={() =>
+                      setOpenCategory((current) =>
+                        current === category ? null : category,
+                      )
+                    }
+                    summary={summary}
+                    onNavigate={() => setSidebarOpen(false)}
+                  />
+                </RevealItem>
+              ))}
+            </RevealList>
           </div>
         </nav>
 
         <div className="glass-card glass-card-hover m-3 rounded-2xl p-3">
-          <div className="flex items-center gap-3 px-1 py-1.5">
+          <Reveal delay={REVEAL_STAGGER * 2}>
+            <div className="flex items-center gap-3 px-1 py-1.5">
             <span className="brand-mark h-9 w-9 shrink-0 rounded-xl text-xs font-bold">
               {initial}
             </span>
@@ -281,12 +300,13 @@ function DashboardLayoutShell() {
             <LogOut size={16} />
             Keluar
           </button>
+          </Reveal>
         </div>
       </aside>
 
       <div className="min-h-screen lg:pl-[17.5rem]">
         <header className="glass-nav sticky top-0 z-30">
-          <div className="flex h-[4.5rem] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Reveal as="div" className="flex h-[4.5rem] items-center justify-between px-4 sm:px-6 lg:px-8" delay={REVEAL_STAGGER * 2}>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -325,7 +345,7 @@ function DashboardLayoutShell() {
                 </span>
               </NavLink>
             </div>
-          </div>
+          </Reveal>
         </header>
 
         <main className="relative px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

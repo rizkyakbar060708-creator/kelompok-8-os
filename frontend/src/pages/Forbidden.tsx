@@ -1,5 +1,6 @@
 import { ArrowLeft, LayoutDashboard, ShieldAlert } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import Reveal from "../components/ui/Reveal";
 
 function Forbidden() {
   const navigate = useNavigate();
@@ -12,7 +13,8 @@ function Forbidden() {
       <div className="orb bottom-[8%] left-[16%] h-72 w-72 bg-amber-300/25" />
 
       <div className="relative w-full max-w-lg">
-        <div className="glass-panel relative overflow-hidden rounded-3xl px-6 py-12 text-center sm:px-10">
+        <Reveal as="section" className="flex flex-col gap-2" delay={0}>
+          <div className="glass-panel relative overflow-hidden rounded-3xl px-6 py-12 text-center sm:px-10">
           <span className="orb -right-16 -top-20 h-56 w-56 bg-amber-400/25" />
           <span className="orb -bottom-20 -left-16 h-56 w-56 bg-rose-400/20" />
 
@@ -57,6 +59,7 @@ function Forbidden() {
         <p className="mt-6 text-center text-xs text-muted-ambient">
           © 2026 CampusCare
         </p>
+        </Reveal>
       </div>
     </div>
   );
