@@ -60,6 +60,7 @@ urlpatterns = [
 
     path("api/facilities/", include("apps.facilities.urls")),
     path("api/complaints/", include("apps.complaints.urls")),
+    path("api/lost-found/", include("apps.lostfound.urls")),
 
     # Antrean dan keputusan banding. Didaftarkan langsung di sini (pola yang
     # sama dengan /api/users/) karena tidak memakai prefix /api/complaints/.

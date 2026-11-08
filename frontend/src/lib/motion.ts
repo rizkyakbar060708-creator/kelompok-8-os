@@ -1,13 +1,13 @@
-// Konstanta animasi reveal untuk seluruh aplikasi.
+// Konstanta animasi reveal untuk seluruh aplikasi CampusCare.
 
-// Satu titik pengaturan kecepatan/jeda/jarak animasi reveal (fade + naik dari
-// bawah). Semua komponen animasi mengambil nilai dari sini, jadi menyetel satu
-// file ini mengubah seluruh halaman sekaligus.
+// Satu titik pengaturan kecepatan / jeda / jarak animasi reveal (fade + naik
+// dari bawah). Semua komponen animasi mengambil nilai dari sini, jadi mengatur
+// satu file ini mengubah seluruh halaman sekaligus.
 //
-// Sengaja hanya animasi opacity/transform (y, scale) supaya berjalan di thread
-// compositor: tidak ada animasi width/height/top/left, dan dilarang animasi
-// backdrop-filter/blur milik permukaan kaca (liquid glass) karena berat
-// ditambah rusak tampilan blur.
+// Sengaja hanya animasi opacity dan transform (y, scale) agar berjalan di
+// thread compositor: tidak ada animasi width/height/top/left, dan dilarang
+// animasi backdrop-filter/blur milik permukaan kaca (liquid glass) karena
+// berat dan merusak tampilan blur.
 
 /** Durasi satu animasi reveal, dalam detik. */
 export const REVEAL_DURATION = 0.6;

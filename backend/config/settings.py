@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.facilities",
     "apps.complaints",
+    "apps.lostfound",
 ]
 
 REST_FRAMEWORK = {

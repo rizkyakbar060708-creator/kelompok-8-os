@@ -756,6 +756,7 @@ pembeda antar grup datang dari warna (kotak ikon ber-tint kategori,
 | --- | --- | --- | --- |
 | Dashboard (`/dashboard`) | ya | tidak | tidak |
 | Semua Pengaduan (`/complaints`, badge total) | ya | ya | ya |
+| Lost & Found (`/lost-found`) | ya | ya | ya |
 | Profil (`/profile`) | ya | ya | ya |
 | Grup Keamanan / Fasilitas / Akademik (accordion) | ya | ya | ya |
 | Dashboard (`/admin`) | tidak | tidak | ya |
@@ -1146,9 +1147,142 @@ Aturan penting pola ini:
   14 hari, daftar terbaru 5 item, dan panel dorongan "buat laporan". Rentangnya
   tetap 30 hari tanpa kontrol rentang.
 
+### 8.10 Pola halaman Lost & Found (`LostFound`)
+
+Fitur terpisah dari Pengaduan; API-nya `GET/POST /api/lost-found/` dan
+`PATCH/DELETE /api/lost-found/{id}/` (kontrak di `lostFoundService.ts`).
+Strukturnya mengikuti §8.3 karena sama-sama halaman daftar:
+
+```
+.mx-auto max-w-7xl space-y-6
+├── header  eyebrow "Pencarian barang" + page-title "Lost & Found" + subtitle
+│           + tombol "Lapor Barang" (btn-primary, membuka Modal form)
+├── notice sukses hijau (emerald chip, hilang sendiri setelah 6 s)
+├── filter bar  .glass-panel rounded-2xl p-3 → hanya input pencarian
+│               (klien-side: judul + lokasi)
+├── chips filter tipe  Semua | Kehilangan (badge jumlah) | Penemuan
+│               (badge jumlah) + "Reset filter" saat filter aktif; pola chip
+│               aktif-disabled yang sama dengan Complaints
+├── alert-error aksi kartu (asil dari "Tandai Selesai")
+└── konten: spinner → panel error Coba lagi → grid kartu → EmptyState
+```
+
+- **Kartu** `glass-card glass-card-hover rounded-2xl p-5`: bingkai atasnya
+  badge tipe (§9.0) di kiri dan pill status di kanan, lalu `h3` judul,
+  deskripsi `line-clamp-2`, dan meta `MapPin/CalendarDays/Phone/User`
+  (kontak dan pelapor hanya dirender bila berisi, pola meta kartu §7.6).
+- **Pill status terbuka/selesai bukan `<StatusBadge>`** — enumnya berbeda
+  (OPEN/RESOLVED, bukan PENDING/IN_PROGRESS/...), jadi memakai komponen
+  pengaduan akan crash pada `statusConfig` tanpa fallback. Pill ditulis
+  inline dengan tone sama seperti §9.0.
+- **Aksi kartu hanya dirender saat `can_edit`** true di respons API dan
+  `status === "OPEN"`: "Tandai Selesai" (`glass-chip` emerald, spinner saat
+  berjalan; PATCH `{"status": "RESOLVED"}`) dan "Hapus"
+  (`icon-button icon-button-danger` + `aria-label` nama laporan). Baris
+  diubah dari respons PATCH, bukan di-mutasi setengah di client.
+- **Hapus lewat Modal konfirmasi** (`components/ui/Modal`, satu dialog
+  untuk semua role karena kontrak `can_edit` yang menentukan izin, bukan
+  role client). Tombol danger memakai pola `btn-secondary` + override merah
+  §8.6.
+- **Modal form "Lapor Barang"** berisi satu `<form>` di dalam children Modal
+  — prop `footer` Modal tidak dipakai supaya tombol submit tetap berada
+  di dalam form (Enter tetap mengirim). Field: tipe (select), judul,
+  lokasi, tanggal (`type="date"`), kontak opsional, deskripsi; batas
+  `maxLength` disalin dari `CharField` backend (200/255/100). Setelah
+  kirim, modal ditutup, daftar di-refetch (`retryKey`), notice sukses
+  tampil; modal tetap terbuka gagalnya 400/403 dan menampilkan pesannya.
+- **Tidak memakai `?type=/?search=` backend.** Seluruh baris di-fetch sekali;
+  filter tipe dan pencarian dihitung di client seperti Complaints, jadi
+  berpindah filter tidak memicu request ulang.
+- Route `/lost-found` dibungkus `ProtectedRoute` tanpa `allowedRoles`
+  (redundan dengan guard level layout, tapi eksplisit) dan item sidebar
+  "Lost & Found" (`PackageSearch size 18`) untuk semua role, sesuai tabel
+  §7.10.
+
+### 8.11 Pola banding pengaduan (`AppealSection` dan antrean banding admin)
+
+Ditambahkan bersama fitur **Pengajuan Banding**. Seluruh akses API banding
+terpusat di `services/appealService.ts`
+(`getComplaintAppeals`, `createAppeal` multipart, `getAppealQueue` khusus
+admin, `decideAppeal` PATCH), dan label/badge status banding dikelola di
+`utils/appealConfig.ts` dengan gaya badge opak yang sama seperti §9.1
+(`px-3 py-1`, `text-xs font-semibold`, radius penuh — dipakai lewat
+`AppealBadge` di `AppealSection`, bukan `<StatusBadge>` karena enumnya
+berbeda):
+
+| Enum (API) | Label Indonesia | Warna badge |
+| --- | --- | --- |
+| `PENDING` | **Menunggu** | `bg-amber-100 text-amber-700` |
+| `ACCEPTED` | **Diterima** | `bg-emerald-100 text-emerald-700` |
+| `DENIED` | **Ditolak** | `bg-red-100 text-red-700` |
+
+**Sisi mahasiswa — `components/complaint/AppealSection.tsx`**, dipasang di
+`ComplaintDetail` setelah kartu deskripsi dan hanya dirender untuk pemilik
+laporan (dicek dari `complaint.reporter === user.id`):
+
+- Tombol "Ajukan Banding" (`btn-primary`, ikon `Gavel`) muncul hanya bila
+  tiga syarat terpenuhi: pemilik laporan, status REJECTED, dan tidak ada
+  banding berstatus PENDING — riwayat harus sudah selesai dimuat, jadi
+  syaratnya meliputi data yang benar, bukan semata status laporan.
+- Form banding memakai `components/ui/Modal` (pola §8.8): textarea alasan
+  wajib (dicek `trim()`, bukan hanya `required` HTML), bukti gambar opsional
+  dengan dropzone `.glass-well` dan validasi sisi klien PNG/JPEG maksimal
+  5 MB (angka nada sama dengan §8.4). Input file ke luar cabang render —
+  pola ref yang sama dengan CreateComplaint.
+- Untuk sub-kategori `PENCURIAN` dan `PELECEHAN_PERUNDUNGAN` input gambar
+  disembunyikan (`SENSITIVE_IMAGE_SUB_CATEGORIES`, §9.5) dan diganti teks
+  info singkat bahwa kategori ini tidak mengizinkan foto.
+- Riwayat banding: baris `divide-y divide-slate-900/[0.07]` di dalam
+  `Card` ber-orb amber, isi alasan, badge status, tanggal ajukan/putusan
+  (`formatDate`), `reviewer_name` bila sudah diputuskan, bukti gambar lewat
+  `resolveMediaUrl()` (wajib — path `/media/...` tanpa host), dan catatan
+  admin (`response_note`) hanya dirender bila berisi.
+- Umpan balik memakai pola `actionError` (gagal muat riwayat, dengan tombol
+  "Coba lagi") / `actionNotice` (berhasil kirim, hanya setelah server balas
+  201 dan riwayat dimuat ulang). Error pengiriman dari dalam modal tampil
+  di dalam modalnya sendiri (pola LostFound §8.10), bukan di panel.
+
+**Sisi admin — panel "Antrean Banding" di `pages/admin/AdminDashboard.tsx`**,
+diletakkan setelah alert error dan sebelum kartu KPI:
+
+- Dirender hanya bila `isAdmin(user?.role)`. Endpoint
+  `GET /api/appeals/?status=PENDING` membalas 403 untuk role lain, jadi
+  fetch tidak pernah dijalankan untuk staf.
+- Setiap baris: judul laporan (link ke `/complaints/{id}`), alasan banding,
+  bukti gambar, tanggal ajukan; tombol **Terima** (override emerald) dan
+  **Tolak** (override merah, pola "danger pada btn-secondary" §8.6) dalam
+  `px-3 py-2 text-xs`.
+- Keputusan lewat Modal konfirmasi berisi penjelasan akibat keputusan,
+  textarea "Catatan untuk pelapor (opsional)", dan tombol sesuai aksi
+  (`btn-primary` untuk terima, override merah untuk tolak). Catatan kosong
+  tidak dikirim (`undefined`), sehingga `response_note` lama tidak tertimpa.
+- Aturan alur: banding diterima membuat status laporan kembali PENDING di
+  backend; banding ditolak tidak mengubah status. Setelah keputusan sukses:
+  antrean di-refetch, daftar pengaduan dashboard di-refetch (`retryKey`),
+  dan badge sidebar ikut lewat `refreshSummary()`.
+
 ---
 
 ## 9. Status Pengaduan & Pemetaan Tampilannya
+
+### 9.0 Status Lost & Found (fitur terpisah)
+
+Fitur Lost & Found (`/lost-found`) bukan bagian pengaduan, jadi statusnya
+dikelola sendiri dan bagian ini hanya mencatat pemetaannya agar tak ada dua
+makna warna yang bertabrakan. Badge tipe memakai tone chip
+(`border-*-200 bg-*-50/90 text-*-700`): Kehilangan (`LOST`) = rose, Penemuan
+(`FOUND`) = sky. Pill status memakai gaya opaque seperti StatusBadge §9.1:
+`OPEN` = Terbuka (amber, perilaku "Menunggu"), `RESOLVED` = Selesai (emerald).
+
+| Enum (API) | Label Indonesia | Warna | Makna |
+| --- | --- | --- | --- |
+| `LOST` | **Kehilangan** | `border-rose-200 bg-rose-50/90 text-rose-700` | Barang milik pelapor hilang |
+| `FOUND` | **Penemuan** | `border-sky-200 bg-sky-50/90 text-sky-700` | Pelapor menemukan barang |
+| `OPEN` | **Terbuka** | `bg-amber-100 text-amber-700` | Laporan masih berjalan |
+| `RESOLVED` | **Selesai** | `bg-emerald-100 text-emerald-700` | Barang sudah ditemukan dikembalikan |
+
+Etiket enum dikelola `lostFoundService.ts` (`LOST_FOUND_TYPE_LABELS`,
+`LOST_FOUND_STATUS_LABELS`); jangan menuliskan label literal di halaman.
 
 ### 9.1 Status → label → warna
 
@@ -1475,6 +1609,7 @@ Tidak ada klaim bahwa semua sudah baik. Berikut temuan nyata:
 | `CreateComplaint` | Select Disabled "Memuat fasilitas..."; tombol Kirim `disabled` | — | `alert-error` | `navigate("/complaints")` — **tanpa konfirmasi** |
 | `ComplaintDetail` | 3 skeleton `h-20` + spinner tengah | — | Dua panel: 404 (tanpa tombol reload) dan error umum (dengan reload) | — |
 | `Profile` | — | — | — | — (data dari context, selalu ada) |
+| `LostFound` | Spinner + "Memuat laporan barang..." | `<EmptyState>` (dua varian: belum ada data `PackageSearch` / filter tidak match `SearchX`) | Panel penuh + "Coba lagi"; error mutasi `alert-error` | Notice banner emerald (hilang 6 s, `role="status"`) |
 | `ProtectedRoute` | Layar penuh: spinner 9×9 + "Memuat halaman..." | — | — | — |
 
 ### 13.2 Loader yang ada — **empat gaya berbeda**

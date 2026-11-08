@@ -16,6 +16,7 @@ import { useComplaintSummary } from "../../contexts/ComplaintSummaryContext"
 import { createComplaint, getComplaintCategories, SENSITIVE_IMAGE_SUB_CATEGORIES, type ComplaintCategory } from "../../services/complaintService"
 import { isComplaintCategory } from "../../utils/categoryConfig"
 import { getFacilities, type Facility } from "../../services/facilityService"
+import Reveal from "../../components/ui/Reveal"
 
 // Backend menyimpan title di CharField(max_length=200). Batas yang sama
 // dipasang di input supaya kesalahan ketahuan sebelum request dikirim, bukan
@@ -347,23 +348,25 @@ function CreateComplaint() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <Link
-          to="/complaints"
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-indigo-600"
-        >
-          <ArrowLeft size={16} />
-          Kembali ke Pengaduan
-        </Link>
+      <Reveal as="section" className="flex flex-col gap-2" delay={0}>
+        <div>
+          <Link
+            to="/complaints"
+            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-indigo-600"
+          >
+            <ArrowLeft size={16} />
+            Kembali ke Pengaduan
+          </Link>
 
-        <p className="eyebrow mb-2">Laporan baru</p>
+          <p className="eyebrow mb-2">Laporan baru</p>
 
-        <h1 className="page-title">Buat Pengaduan</h1>
+          <h1 className="page-title">Buat Pengaduan</h1>
 
-        <p className="page-subtitle">
-          Laporkan masalah fasilitas yang kamu temukan.
-        </p>
-      </div>
+          <p className="page-subtitle">
+            Laporkan masalah fasilitas yang kamu temukan.
+          </p>
+        </div>
+      </Reveal>
 
       {error && (
         <div
@@ -380,6 +383,7 @@ function CreateComplaint() {
         onSubmit={handleSubmit}
         className="glass-panel relative overflow-hidden space-y-6 rounded-3xl p-6 sm:p-8"
       >
+        <Reveal delay={0}>
         <span className="orb -right-20 -top-20 h-56 w-56 bg-indigo-400/25" />
 
         <div className="relative grid gap-6 sm:grid-cols-2">
@@ -735,6 +739,7 @@ function CreateComplaint() {
             )}
           </button>
         </div>
+        </Reveal>
       </form>
     </div>
   )

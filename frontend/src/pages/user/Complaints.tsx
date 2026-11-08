@@ -13,6 +13,8 @@ import { useEffect, useState } from "react"
 
 import ComplaintCard from "../../components/complaint/ComplaintCard"
 import EmptyState from "../../components/ui/EmptyState"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
 import { useAuth } from "../../contexts/AuthContext"
 import {
   getComplaints,
@@ -267,7 +269,7 @@ function Complaints({ category }: { category?: Complaint["category"] }) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <Reveal as="section" className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end" delay={0}>
         <div>
           <p className="eyebrow mb-2">Daftar laporan</p>
           <h1 className="page-title">
@@ -298,7 +300,7 @@ function Complaints({ category }: { category?: Complaint["category"] }) {
             Buat Pengaduan
           </Link>
         )}
-      </div>
+      </Reveal>
 
       <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
@@ -462,29 +464,30 @@ function Complaints({ category }: { category?: Complaint["category"] }) {
           )}
 
           {!error && filteredComplaints.length > 0 ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <RevealList as="section" className="grid gap-4 lg:grid-cols-2">
               {filteredComplaints.map((complaint) => (
-                <ComplaintCard
-                  key={complaint.id}
-                  id={complaint.id}
-                  title={complaint.title}
-                  category={complaint.category}
-                  subCategory={complaint.sub_category}
-                  location={`${complaint.facilityName} · ${complaint.location}`}
-                  date={new Date(complaint.created_at).toLocaleDateString(
-                    "id-ID",
-                    {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    },
-                  )}
-                  status={complaint.status}
-                  reporter={complaint.reporter_username}
-                  isAnonymous={complaint.is_anonymous}
-                />
+                <RevealItem key={complaint.id}>
+                  <ComplaintCard
+                    id={complaint.id}
+                    title={complaint.title}
+                    category={complaint.category}
+                    subCategory={complaint.sub_category}
+                    location={`${complaint.facilityName} · ${complaint.location}`}
+                    date={new Date(complaint.created_at).toLocaleDateString(
+                      "id-ID",
+                      {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      },
+                    )}
+                    status={complaint.status}
+                    reporter={complaint.reporter_username}
+                    isAnonymous={complaint.is_anonymous}
+                  />
+                </RevealItem>
               ))}
-            </div>
+            </RevealList>
           ) : !error ? (
             <EmptyState
               icon={SearchX}

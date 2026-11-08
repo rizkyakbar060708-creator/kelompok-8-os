@@ -15,6 +15,7 @@ import Complaints from "../pages/user/Complaints";
 import Profile from "../pages/user/Profile";
 import CreateComplaint from "../pages/user/CreateComplaint";
 import ComplaintDetail from "../pages/user/ComplaintDetail";
+import LostFound from "../pages/user/LostFound";
 
 import DashboardRedirector from "../components/auth/DashboardRedirector";
 
@@ -93,6 +94,18 @@ function AppRoutes() {
         <Route path="/complaints/akademik" element={<Complaints category="AKADEMIK" />} />
         <Route path="/complaints/create" element={<CreateComplaint />} />
         <Route path="/complaints/:id" element={<ComplaintDetail />} />
+        {/* ProtectedRoute di sini redundan dengan guard level layout (semua
+            anak DashboardLayout sudah dibungkus ProtectedRoute), tapi tetap
+            ditulis eksplisit agar nanti kalau rute keluar dari layout,
+            pengamanannya tidak ikut hilang. Tanpa allowedRoles = semua role. */}
+        <Route
+          path="/lost-found"
+          element={
+            <ProtectedRoute>
+              <LostFound />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/profile" element={<Profile />} />
       </Route>
 

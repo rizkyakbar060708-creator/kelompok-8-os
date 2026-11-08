@@ -1,11 +1,6 @@
 import { motion, useReducedMotion } from "motion/react"
 import type { ReactNode } from "react"
 
-import { REVEAL_OFFSET_Y, REVEAL_VIEWPORT, revealTransition } from "../../lib/motion"
-
-// Tag HTML yang dibolehkan untuk Reveal. Daftar tertutup supaya pemetaan
-// motion-nya bisa statis (motion div/section/article/...) tanpa pemanggilan
-// motion.create() dinamis saat render.
 const MOTION_TAGS = {
   div: motion.div,
   section: motion.section,
@@ -26,17 +21,11 @@ type RevealTag = keyof typeof MOTION_TAGS
 
 interface RevealProps {
   children: ReactNode
-  // Jeda sebelum animasi berjalan (detik); dipakai menata urutan "muncul
-  // satu per satu" untuk elemen yang sudah berada di atas layar.
   delay?: number
   className?: string
   as?: RevealTag
 }
 
-// Pembungkus reveal tunggal: fade-in + naik 24px saat elemen masuk layar.
-// Dipakai untuk judul, panel utama, kartu, dst. Animasi hanya menyentuh
-// opacity dan transform — dipasang pada wrapper, jadi permukaan kaca
-// (glass-panel/glass-card) tidak ikut dianimasikan backdrop-filter-nya.
 function Reveal({ children, delay = 0, className, as = "div" }: RevealProps) {
   const reducedMotion = useReducedMotion()
 
@@ -53,10 +42,14 @@ function Reveal({ children, delay = 0, className, as = "div" }: RevealProps) {
   return (
     <MotionTag
       className={className}
-      initial={{ opacity: 0, y: REVEAL_OFFSET_Y }}
+      initial={{ opacity: 0, y: 24 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={REVEAL_VIEWPORT}
-      transition={revealTransition(delay)}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{
+        duration: 0.6,
+        ease: [0.22, 1, 0.36, 1],
+        delay,
+      }}
     >
       {children}
     </MotionTag>
