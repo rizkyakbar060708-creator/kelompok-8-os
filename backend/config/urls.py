@@ -13,6 +13,8 @@ from apps.accounts.views import (
     UserPasswordResetView,
 )
 
+from apps.complaints.views import AppealDecisionView, AppealQueueView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
 
@@ -58,6 +60,19 @@ urlpatterns = [
 
     path("api/facilities/", include("apps.facilities.urls")),
     path("api/complaints/", include("apps.complaints.urls")),
+
+    # Antrean dan keputusan banding. Didaftarkan langsung di sini (pola yang
+    # sama dengan /api/users/) karena tidak memakai prefix /api/complaints/.
+    path(
+        "api/appeals/",
+        AppealQueueView.as_view(),
+        name="appeal-list",
+    ),
+    path(
+        "api/appeals/<int:pk>/",
+        AppealDecisionView.as_view(),
+        name="appeal-detail",
+    ),
 ]
 
 # Django tidak menyajikan MEDIA_ROOT sendiri. static() sengaja hanya aktif saat

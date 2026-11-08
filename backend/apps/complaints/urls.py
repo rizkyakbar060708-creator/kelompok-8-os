@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    ComplaintAppealListCreateView,
     ComplaintCategoriesView,
     ComplaintDetailView,
     ComplaintListCreateView,
@@ -23,6 +24,11 @@ urlpatterns = [
         "summary/",
         ComplaintSummaryView.as_view(),
         name="complaint-summary",
+    ),
+    path(
+        "<int:pk>/appeals/",
+        ComplaintAppealListCreateView.as_view(),
+        name="complaint-appeals",
     ),
     path(
         "<int:pk>/",

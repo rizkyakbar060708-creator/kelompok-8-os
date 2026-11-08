@@ -125,6 +125,8 @@ manual lewat `/admin/`).
 | Lihat daftar/detail pengaduan | miliknya saja | semua | semua |
 | Ubah `status`/`priority` | tidak | ya | ya |
 | Hapus pengaduan | miliknya, hanya saat `PENDING` | tidak | semua |
+| Ajukan banding (laporan `REJECTED`) | miliknya | tidak | tidak |
+| Putuskan banding (`/api/appeals/`) | tidak | tidak | ya |
 | Nama pelapor (`reporter_username`) | null | null | terisi |
 | Tulis fasilitas | tidak | tidak | ya |
 
@@ -183,6 +185,52 @@ Gotcha otorisasi:
   pernah menyimpan, mengembalikan, atau menampilkan password dalam bentuk apa pun.
   Reset password oleh admin mencabut semua refresh token milik target agar sesi
   lama tidak dapat digunakan lagi.
+
+## Fitur banding (Appeal)
+
+| Method | URL | Akses | Keterangan |
+| --- | --- | --- | --- |
+| POST | `/api/complaints/{id}/appeals/` | pemilik laporan | Ajukan banding; `multipart` (`reason` wajib, `evidence` opsional), balas `201` + objek Appeal |
+| GET | `/api/complaints/{id}/appeals/` | role sesuai scoping laporan | Riwayat banding laporan itu, urut terbaru |
+| GET | `/api/appeals/` | ADMIN | Antrean semua banding; filter `?status=PENDING` |
+| PATCH | `/api/appeals/{id}/` | ADMIN | Putuskan banding; `JSON {status, response_note}` |
+
+Gotcha banding:
+
+- Model `Appeal` di `apps/complaints/models.py`, serializer di
+  `apps/complaints/serializers.py` (`AppealSerializer` representation,
+  `AppealCreateSerializer` pembuatan, `AppealDecisionSerializer` keputusan).
+  Response wrapper memakai `AppealSerializer` lewat `to_representation()`.
+- **Aturan bisnis yang diputuskan produk, jangan dilonggarkan:** hanya laporan
+  `REJECTED` yang boleh dibanding (`RESOLVED` tidak); hanya pemilik laporan yang
+  boleh mengajukan; satu laporan hanya punya satu banding `PENDING`;
+  keputusan hanya pada banding yang masih `PENDING`; hanya ADMIN (lewat
+  `IsAdmin`, bukan `is_manager()`) yang boleh memutuskan — STAFF tidak
+  boleh.
+- Banding `ACCEPTED` menyetel status laporan kembali ke `PENDING` — simpan
+  lewat `complaint.save()` supaya `resolved_at` dibersihkan oleh override
+  `Complaint.save()`. Banding `DENIED` tidak menyentuh status laporan sama
+  sekali. Jangan tandai laporan `RESOLVED` otomatis: banding diterima artinya
+  masuk antrean lagi, bukan keputusan akhir.
+- Setelah banding `DENIED`, laporan itu boleh dibanding ulang (yang dikunci
+  hanya `PENDING` ganda, ditegakkan serializer + `UniqueConstraint`
+  `unique_pending_appeal_per_complaint` di migrasi `0004_appeal.py`).
+- Endpoint nested `/api/complaints/{id}/appeals/` memakai `ScopedComplaintMixin`
+  sehingga laporan milik orang lain membalas `404` dan `PELECEHAN_PERUNDUNGAN`
+  tetap tidak terlihat oleh STAFF. Mengajukan banding tetap dicek ulang
+  `complaint.reporter_id == request.user.id` di view (403) karena staf/admin
+  yang bisa membaca laporan bukan berarti boleh banding atas nama pemiliknya.
+- Bukti (`evidence`) memakai ulang validasi gambar pengaduan (`ALLOWED_IMAGE_TYPES`,
+  `MAX_IMAGE_SIZE_BYTES`; kirim via `multipart`, jangan set `Content-Type` manual).
+  Foto dilarang untuk laporan `PENCURIAN` dan `PELECEHAN_PERUNDUNGAN`
+  (`ComplaintSerializer.SENSITIVE_SUBCATEGORIES`) karena `/media/` publik;
+  banding tanpa bukti untuk laporan itu tetap valid. `evidence` dikembalikan
+  sebagai path `/media/...` tanpa host — frontend wajib `resolveMediaUrl()`,
+  sama seperti `image`.
+- JSON Appeal hanya berisi `id`, `complaint`, `complaint_title`, `status`,
+  `reason`, `evidence`, `response_note`, `reviewer_name`, `reviewed_at`,
+  `created_at` — tidak ada field pelapor, jadi anonimitas tidak bocor lewat
+  banding. `reviewer_name` `null` sampai admin memutuskan.
 
 ## TODO yang sengaja ditunda
 
