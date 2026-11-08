@@ -1199,6 +1199,68 @@ Strukturnya mengikuti §8.3 karena sama-sama halaman daftar:
   "Lost & Found" (`PackageSearch size 18`) untuk semua role, sesuai tabel
   §7.10.
 
+### 8.11 Pola banding pengaduan (`AppealSection` dan antrean banding admin)
+
+Ditambahkan bersama fitur **Pengajuan Banding**. Seluruh akses API banding
+terpusat di `services/appealService.ts`
+(`getComplaintAppeals`, `createAppeal` multipart, `getAppealQueue` khusus
+admin, `decideAppeal` PATCH), dan label/badge status banding dikelola di
+`utils/appealConfig.ts` dengan gaya badge opak yang sama seperti §9.1
+(`px-3 py-1`, `text-xs font-semibold`, radius penuh — dipakai lewat
+`AppealBadge` di `AppealSection`, bukan `<StatusBadge>` karena enumnya
+berbeda):
+
+| Enum (API) | Label Indonesia | Warna badge |
+| --- | --- | --- |
+| `PENDING` | **Menunggu** | `bg-amber-100 text-amber-700` |
+| `ACCEPTED` | **Diterima** | `bg-emerald-100 text-emerald-700` |
+| `DENIED` | **Ditolak** | `bg-red-100 text-red-700` |
+
+**Sisi mahasiswa — `components/complaint/AppealSection.tsx`**, dipasang di
+`ComplaintDetail` setelah kartu deskripsi dan hanya dirender untuk pemilik
+laporan (dicek dari `complaint.reporter === user.id`):
+
+- Tombol "Ajukan Banding" (`btn-primary`, ikon `Gavel`) muncul hanya bila
+  tiga syarat terpenuhi: pemilik laporan, status REJECTED, dan tidak ada
+  banding berstatus PENDING — riwayat harus sudah selesai dimuat, jadi
+  syaratnya meliputi data yang benar, bukan semata status laporan.
+- Form banding memakai `components/ui/Modal` (pola §8.8): textarea alasan
+  wajib (dicek `trim()`, bukan hanya `required` HTML), bukti gambar opsional
+  dengan dropzone `.glass-well` dan validasi sisi klien PNG/JPEG maksimal
+  5 MB (angka nada sama dengan §8.4). Input file ke luar cabang render —
+  pola ref yang sama dengan CreateComplaint.
+- Untuk sub-kategori `PENCURIAN` dan `PELECEHAN_PERUNDUNGAN` input gambar
+  disembunyikan (`SENSITIVE_IMAGE_SUB_CATEGORIES`, §9.5) dan diganti teks
+  info singkat bahwa kategori ini tidak mengizinkan foto.
+- Riwayat banding: baris `divide-y divide-slate-900/[0.07]` di dalam
+  `Card` ber-orb amber, isi alasan, badge status, tanggal ajukan/putusan
+  (`formatDate`), `reviewer_name` bila sudah diputuskan, bukti gambar lewat
+  `resolveMediaUrl()` (wajib — path `/media/...` tanpa host), dan catatan
+  admin (`response_note`) hanya dirender bila berisi.
+- Umpan balik memakai pola `actionError` (gagal muat riwayat, dengan tombol
+  "Coba lagi") / `actionNotice` (berhasil kirim, hanya setelah server balas
+  201 dan riwayat dimuat ulang). Error pengiriman dari dalam modal tampil
+  di dalam modalnya sendiri (pola LostFound §8.10), bukan di panel.
+
+**Sisi admin — panel "Antrean Banding" di `pages/admin/AdminDashboard.tsx`**,
+diletakkan setelah alert error dan sebelum kartu KPI:
+
+- Dirender hanya bila `isAdmin(user?.role)`. Endpoint
+  `GET /api/appeals/?status=PENDING` membalas 403 untuk role lain, jadi
+  fetch tidak pernah dijalankan untuk staf.
+- Setiap baris: judul laporan (link ke `/complaints/{id}`), alasan banding,
+  bukti gambar, tanggal ajukan; tombol **Terima** (override emerald) dan
+  **Tolak** (override merah, pola "danger pada btn-secondary" §8.6) dalam
+  `px-3 py-2 text-xs`.
+- Keputusan lewat Modal konfirmasi berisi penjelasan akibat keputusan,
+  textarea "Catatan untuk pelapor (opsional)", dan tombol sesuai aksi
+  (`btn-primary` untuk terima, override merah untuk tolak). Catatan kosong
+  tidak dikirim (`undefined`), sehingga `response_note` lama tidak tertimpa.
+- Aturan alur: banding diterima membuat status laporan kembali PENDING di
+  backend; banding ditolak tidak mengubah status. Setelah keputusan sukses:
+  antrean di-refetch, daftar pengaduan dashboard di-refetch (`retryKey`),
+  dan badge sidebar ikut lewat `refreshSummary()`.
+
 ---
 
 ## 9. Status Pengaduan & Pemetaan Tampilannya

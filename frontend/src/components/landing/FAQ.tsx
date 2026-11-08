@@ -25,7 +25,7 @@ const FAQS: readonly FAQItem[] = [
   {
     q: "Bagaimana jika pengaduan saya ditolak?",
     a:
-      "Jika pengaduan ditolak, statusnya berubah menjadi Ditolak dengan catatan dari tim pengelola. Anda dapat membuat pengaduan baru bila perlu menyampaikan informasi tambahan.",
+      "Jika pengaduan ditolak, statusnya berubah menjadi Ditolak dengan catatan dari tim pengelola. Pada halaman detail pengaduan, Anda dapat mengajukan banding dengan memberikan alasan dan bukti tambahan. Administrator akan memeriksa ulang: jika banding diterima, status laporan kembali menjadi Menunggu; jika ditolak, catatan admin akan tampil pada riwayat banding Anda.",
   },
   {
     q: "Apakah laporan keamanan bersifat rahasia?",

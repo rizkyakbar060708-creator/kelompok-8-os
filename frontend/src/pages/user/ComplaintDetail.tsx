@@ -17,6 +17,7 @@ import axios from "axios"
 
 import StatusBadge from "../../components/ui/StatusBadge"
 import Card from "../../components/ui/Card"
+import AppealSection from "../../components/complaint/AppealSection"
 import { useAuth } from "../../contexts/AuthContext"
 import { useComplaintSummary } from "../../contexts/ComplaintSummaryContext"
 import {
@@ -376,6 +377,10 @@ function ComplaintDetail() {
               </div>
             </div>
           </Card>
+
+          {/* Panel banding dirender untuk pemilik laporan saja; komponennya
+              sendiri yang memeriksa pemilik dan kondisi tombolnya. */}
+          <AppealSection complaint={complaint} />
 
           {/* Backend hanya mengisi reporter_username untuk role ADMIN, jadi kartu
               ini tidak pernah muncul untuk mahasiswa atau staf. */}
