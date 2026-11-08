@@ -1,18 +1,29 @@
 from datetime import timedelta
 
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from rest_framework import exceptions, generics
+from rest_framework import exceptions, generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsManagerOrOwner, is_admin, is_manager
+from apps.accounts.permissions import (
+    IsAdmin,
+    IsManagerOrOwner,
+    is_admin,
+    is_manager,
+)
 
-from .models import Complaint
+from .models import Appeal, Complaint
 from .permissions import CanDeleteComplaint
-from .serializers import ComplaintSerializer
+from .serializers import (
+    AppealCreateSerializer,
+    AppealDecisionSerializer,
+    AppealSerializer,
+    ComplaintSerializer,
+)
 
 
 class ComplaintCategoriesView(APIView):
@@ -353,3 +364,83 @@ class ComplaintDetailView(
         IsManagerOrOwner,
         CanDeleteComplaint,
     ]
+
+
+class ComplaintAppealListCreateView(ScopedComplaintMixin, APIView):
+    """Riwayat banding satu pengaduan (GET) dan pengajuan banding (POST).
+
+    Identifikasi pengaduan tetap melalui hukum scoping pengaduan: mahasiswa
+    melihat miliknya saja (id orang lain membalas 404), dan staf tidak pernah
+    melihat PELECEHAN_PERUNDUNGAN. Berbeda dengan membaca, mengajukan banding
+    hanya boleh dilakukan pemilik laporan — staf/admin yang kebetulan dapat
+    membuka laporan itu tidak boleh mengajukan banding atas nama orang lain.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def base_queryset(self):
+        return Complaint.objects.all()
+
+    def get(self, request, pk):
+        complaint = get_object_or_404(self.get_queryset(), pk=pk)
+
+        serializer = AppealSerializer(
+            complaint.appeals.all(),
+            many=True,
+            context={"request": request},
+        )
+
+        return Response(serializer.data)
+
+    def post(self, request, pk):
+        complaint = get_object_or_404(self.get_queryset(), pk=pk)
+
+        if complaint.reporter_id != request.user.id:
+            return Response(
+                {"detail": "Hanya pemilik laporan yang dapat mengajukan banding."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AppealCreateSerializer(
+            data=request.data,
+            context={"complaint": complaint, "request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class AppealQueueView(generics.ListAPIView):
+    """Antrean seluruh banding untuk diputuskan admin.
+
+    Endpoint ini khusus ADMIN (bukan STAFF), berbeda dengan list pengaduan.
+    Semua banding milik siapa pun tampil, jadi tidak perlu scoping tambahan.
+    """
+
+    queryset = Appeal.objects.select_related("complaint", "reviewer")
+    serializer_class = AppealSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        filter_status = self.request.query_params.get("status")
+        if filter_status:
+            queryset = queryset.filter(status=filter_status)
+
+        return queryset
+
+
+class AppealDecisionView(generics.UpdateAPIView):
+    """Keputusan atas banding (khusus ADMIN, hanya PATCH).
+
+    Logika ACCEPTED/DENIED dan efeknya ke status pengaduan ada di
+    AppealDecisionSerializer.update(), bukan di view, supaya pola yang sama
+    dengan guard status/priority di ComplaintSerializer.
+    """
+
+    queryset = Appeal.objects.select_related("complaint", "reviewer")
+    serializer_class = AppealDecisionSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    http_method_names = ["patch"]

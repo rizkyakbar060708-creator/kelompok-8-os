@@ -49,6 +49,7 @@ Data inti yang dimodelkan:
 
 - **Fasilitas** — data master fasilitas yang dapat dilaporkan (AC, lampu, keran air, dsb.).
 - **Pengaduan** — laporan kerusakan yang merujuk ke satu fasilitas dan satu pelapor.
+- **Banding** — keberatan mahasiswa atas laporan yang ditolak; ditinjau dan diputuskan admin (`ACCEPTED`/`DENIED`).
 - **Akun** — user dengan atribut `role` (`STUDENT`, `STAFF`, `ADMIN`).
 
 Frontend menggunakan desain **liquid glass** (glassmorphism dengan transparansi,
@@ -82,6 +83,9 @@ refleksi, dan efek refractif) di atas latar navy gelap.
 - Mengambil data user yang sedang login (`/api/auth/me/`).
 - CRUD lengkap untuk **fasilitas**: list, create, retrieve, update, delete.
 - CRUD lengkap untuk **pengaduan**: list, create, retrieve, update, delete.
+- **Pengajuan banding (appeal)** atas laporan yang ditolak: mahasiswa pemilik mengirim
+  alasan dan bukti opsional, admin memutuskan (`ACCEPTED`/`DENIED`; diterima → laporan
+  masuk antrean lagi sebagai `PENDING`).
 - Otorisasi berbasis role pada pengaduan dan fasilitas, ditegakkan di queryset,
   view, dan serializer.
 - Manajemen pengguna khusus admin: daftar semua pengguna, ubah peran, dan atur ulang
@@ -258,6 +262,8 @@ menulis `user.role == "..."` langsung di tempat lain.
 | Lihat daftar/detail pengaduan | miliknya saja | semua | semua |
 | Ubah `status` / `priority` | tidak | ya | ya |
 | Hapus pengaduan | miliknya, hanya saat `PENDING` | tidak | semua |
+| Ajukan banding | miliknya, hanya saat laporan `REJECTED` | tidak | tidak |
+| Putuskan banding (`/api/appeals/`) | tidak | tidak | ya |
 | Lihat nama pelapor | tidak | tidak | ya |
 | Kelola fasilitas (tambah/edit/hapus) | tidak | tidak | ya |
 | Akses `/admin` | tidak | tidak | ya |

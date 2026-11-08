@@ -20,6 +20,8 @@ Backend tidak memakai `.env`; konfigurasi ada di `config/settings.py`.
 - `apps/complaints/permissions.py` berisi aturan penghapusan pengaduan.
 - `apps/complaints/migrations/0002_complaint_category_and_incident_fields.py`
   menambahkan kategori, informasi kejadian, dan anonimitas.
+- `apps/complaints/migrations/0004_appeal.py` menambahkan model `Appeal` beserta
+  constraint satu banding `PENDING` per laporan.
 
 Role aplikasi adalah `STUDENT`, `STAFF`, dan `ADMIN`. Field `role` merupakan satu-satunya
 sumber kebenaran API; `is_staff` dan `is_superuser` hanya mengatur dashboard Django
@@ -31,6 +33,8 @@ sumber kebenaran API; `is_staff` dan `is_superuser` hanya mengatur dashboard Dja
 | Lihat `PELECEHAN_PERUNDUNGAN` | Miliknya | Tidak | Semua |
 | Ubah status/prioritas | Tidak | Ya | Ya |
 | Hapus laporan | Miliknya saat `PENDING` | Tidak | Semua |
+| Ajukan banding pada laporan `REJECTED` | Miliknya | Tidak | Tidak |
+| Putuskan banding | Tidak | Tidak | Ya |
 | Menulis fasilitas | Tidak | Tidak | Ya |
 
 Register selalu membuat akun `STUDENT`. Access token berlaku 30 menit dan refresh token
@@ -55,6 +59,11 @@ Semua URL wajib memakai trailing slash.
 | GET | `/api/users/` | ADMIN | Daftar pengguna dan jumlah laporan |
 | PATCH | `/api/users/{id}/` | ADMIN | Mengubah role pengguna lain |
 | POST | `/api/users/{id}/password/` | ADMIN | Reset password pengguna lain; `204` |
+
+| GET | `/api/complaints/{id}/appeals/` | Bearer | Riwayat banding laporan itu (urut terbaru) |
+| POST | `/api/complaints/{id}/appeals/` | Bearer, pemilik laporan | Ajukan banding; `multipart` (`reason`, `evidence` opsional); `201` |
+| GET | `/api/appeals/` | ADMIN | Antrean semua banding; filter `?status=PENDING` |
+| PATCH | `/api/appeals/{id}/` | ADMIN | Putuskan banding; `JSON {status, response_note}` |
 
 Respons `/api/users/` tidak pernah memuat password atau hash. ADMIN tidak dapat mengubah
 role maupun mereset password akunnya sendiri.
@@ -126,6 +135,45 @@ STUDENT dapat mengubah isi laporan miliknya, tetapi tidak dapat mengubah `status
 `priority`. STAFF dan ADMIN dapat mengubah keduanya. Laporan orang lain yang tidak
 diizinkan selalu memberi `404`, bukan `403`.
 
+## Banding (Appeal)
+
+Mahasiswa dapat mengajukan keberatan atas laporan yang ditolak. Model `Appeal` terhubung
+ke `Complaint` dan hanya boleh dibuat dari endpoint nested berikut:
+
+```text
+POST /api/complaints/{id}/appeals/   # multipart: reason, evidence (opsional)
+GET  /api/complaints/{id}/appeals/   # riwayat banding laporan, urut terbaru
+GET  /api/appeals/?status=PENDING    # antrean banding, khusus ADMIN
+PATCH /api/appeals/{id}/             # keputusan: {status: ACCEPTED|DENIED, response_note}
+```
+
+JSON banding: `id`, `complaint`, `complaint_title`, `status`, `reason`, `evidence`,
+`response_note`, `reviewer_name`, `reviewed_at`, `created_at`. Tidak ada field pelapor,
+jadi identitas pengadu hanya diketahui lewat `reporter_username` pada laporannya sendiri.
+
+Aturan banding, ditegakkan di `AppealCreateSerializer` dan `AppealDecisionSerializer`:
+
+| Aturan | Perlakuan |
+| --- | --- |
+| Hanya laporan `REJECTED` yang boleh dibanding | `400` pada status lain |
+| Hanya pemilik laporan yang boleh mengajukan | Laporan milik orang lain `404`; staf/admin yang bisa membaca laporan tetap `403` |
+| Satu banding `PENDING` per laporan | `400`; laporan yang sudah DENIED boleh dibanding ulang |
+| Hanya ADMIN yang memutuskan | `403` untuk STUDENT maupun STAFF; STAFF tidak sengaja disamakan dengan admin pada fitur ini |
+| Keputusan (`ACCEPTED`/`DENIED`) hanya untuk banding `PENDING` | `400` untuk banding yang sudah diputuskan |
+| Banding diterima | Status laporan kembali `PENDING` (masuk antrean lagi); `resolved_at` dibersihkan oleh `Complaint.save()` |
+| Banding ditolak | Status laporan tidak berubah; `reviewer`, `response_note`, `reviewed_at` tetap terisi |
+
+Bukti berupa satu gambar, wajib `multipart/form-data`, validasinya sama dengan foto
+pengaduan (PNG/JPEG, maksimal 5 MB, allowlist berbasis isi file yang dibaca Pillow).
+Untuk laporan `PENCURIAN` dan `PELECEHAN_PERUNDUNGAN` gambar bukti dilarang karena
+`/media/` dilayani publik; banding tanpa bukti untuk laporan tersebut tetap boleh.
+`evidence` dikembalikan sebagai path `/media/...` tanpa host, sama seperti `image` pada
+pengaduan.
+
+Akses mengikuti pola pengaduan: objek milik orang lain membalas `404`, laporan
+`PELECEHAN_PERUNDUNGAN` tidak pernah terlihat oleh STAFF (berlaku juga pada endpoint
+nested banding), dan admin melihat semuanya.
+
 ## Catatan frontend
 
 - Base URL harus berakhir dengan `/api`; service memakai path relatif seperti
@@ -143,4 +191,5 @@ diizinkan selalu memberi `404`, bukan `403`.
 ```
 
 Suite menguji ownership, akses sensitif, anonimitas, filter yang tidak membocorkan data,
-validasi kategori, prioritas otomatis, upload gambar, dan JWT blacklist.
+validasi kategori, prioritas otomatis, upload gambar, JWT blacklist, serta pengajuan dan
+keputusan banding (`AppealTests`).

@@ -137,3 +137,55 @@ class Complaint(models.Model):
     @property
     def is_sensitive(self):
         return self.sub_category == self.SubCategory.PELECEHAN_PERUNDUNGAN
+
+
+class Appeal(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        DENIED = "DENIED", "Denied"
+
+    complaint = models.ForeignKey(
+        Complaint,
+        on_delete=models.CASCADE,
+        related_name="appeals",
+    )
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="appeals",
+    )
+    reason = models.TextField()
+    evidence = models.ImageField(
+        upload_to="appeals/",
+        blank=True,
+        null=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="reviewed_appeals",
+    )
+    response_note = models.TextField(blank=True, default="")
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["complaint"],
+                condition=models.Q(status="PENDING"),
+                name="unique_pending_appeal_per_complaint",
+            )
+        ]
+
+    def __str__(self):
+        return f"Appeal #{self.id} for Complaint #{self.complaint_id} ({self.status})"
