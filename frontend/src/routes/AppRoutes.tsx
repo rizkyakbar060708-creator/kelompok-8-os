@@ -16,6 +16,7 @@ import Profile from "../pages/user/Profile";
 import CreateComplaint from "../pages/user/CreateComplaint";
 import ComplaintDetail from "../pages/user/ComplaintDetail";
 import LostFound from "../pages/user/LostFound";
+import Weather from "../pages/user/Weather";
 
 import DashboardRedirector from "../components/auth/DashboardRedirector";
 
@@ -103,6 +104,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <LostFound />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/weather"
+          element={
+            <ProtectedRoute>
+              <Weather />
             </ProtectedRoute>
           }
         />

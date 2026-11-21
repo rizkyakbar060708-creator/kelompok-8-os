@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -52,6 +53,7 @@ INSTALLED_APPS = [
     "apps.facilities",
     "apps.complaints",
     "apps.lostfound",
+    "apps.weather",
 ]
 
 REST_FRAMEWORK = {
@@ -86,6 +88,28 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
 ]
+
+
+# --- Prakiraan cuaca BMKG -------------------------------------------------
+# ADM4 adalah kode wilayah desa/kelurahan (Sungai Miai, Banjarmasin Utara).
+# Bisa ditimpa lewat environment tanpa mengubah kode.
+WEATHER_DEFAULT_ADM4 = os.environ.get("WEATHER_DEFAULT_ADM4", "63.71.04.1005")
+
+# BMKG membalas 403 untuk User-Agent bawaan urllib, jadi header ini wajib.
+# Nilainya menyebut identitas proyek dan kanal kontak sesuai etika pemakaian
+# API publik; ganti URL/kontak placeholder ini sebelum dipublikasikan.
+WEATHER_USER_AGENT = os.environ.get(
+    "WEATHER_USER_AGENT",
+    "CampusCare/1.0 (+https://github.com/campuscare; contact: campuscare@example.com)",
+)
+
+# Batas tunggu pendek supaya halaman tidak menggantung saat BMKG lambat.
+WEATHER_HTTP_TIMEOUT = float(os.environ.get("WEATHER_HTTP_TIMEOUT", "5"))
+
+# Cache utama 30 menit: cukup segar untuk slot 3 jam dan jauh di bawah batas
+# 60 request/menit. Salinan stale 6 jam hanya dipakai saat BMKG gagal.
+WEATHER_CACHE_TTL = int(os.environ.get("WEATHER_CACHE_TTL", "1800"))
+WEATHER_STALE_TTL = int(os.environ.get("WEATHER_STALE_TTL", "21600"))
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
