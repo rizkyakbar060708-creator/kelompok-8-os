@@ -7,6 +7,7 @@ import {
   CircleCheck,
   ClipboardList,
   Clock3,
+  CloudSun,
   FileText,
   GraduationCap,
   Home,
@@ -83,6 +84,9 @@ const navItems: readonly NavItem[] = [
   // Item ini path datar tanpa query string, jadi NavLink bawaan sudah cukup
   // untuk aktivasi tanpa opsi `end` tambahan (tidak ada route turunannya).
   { name: "Lost & Found", path: "/lost-found", icon: PackageSearch, roles: ALL_ROLES },
+  // Cuaca tetap terlihat untuk semua role; datanya prakiraan publik BMKG,
+  // bukan data pengaduan yang perlu discope.
+  { name: "Cuaca Kampus", path: "/weather", icon: CloudSun, roles: ALL_ROLES },
   { name: "Profil", path: "/profile", icon: User, roles: ALL_ROLES },
   {
     name: "Dashboard",
