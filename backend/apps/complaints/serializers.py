@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from apps.accounts.permissions import is_admin, is_manager
 
-from .models import Complaint
+from .models import Appeal, Complaint
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_SIZE_MB = MAX_IMAGE_SIZE_BYTES // (1024 * 1024)
@@ -298,3 +298,161 @@ class ComplaintSerializer(serializers.ModelSerializer):
             attrs["priority"] = Complaint.Priority.HIGH
 
         return attrs
+
+
+class AppealSerializer(serializers.ModelSerializer):
+    complaint = serializers.PrimaryKeyRelatedField(read_only=True)
+    complaint_title = serializers.CharField(source="complaint.title", read_only=True)
+    reviewer_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Appeal
+        fields = (
+            "id",
+            "complaint",
+            "complaint_title",
+            "status",
+            "reason",
+            "evidence",
+            "response_note",
+            "reviewer_name",
+            "reviewed_at",
+            "created_at",
+        )
+        read_only_fields = (
+            "id",
+            "complaint",
+            "complaint_title",
+            "status",
+            "response_note",
+            "reviewer_name",
+            "reviewed_at",
+            "created_at",
+        )
+
+    def get_reviewer_name(self, obj):
+        if obj.reviewer is not None:
+            return obj.reviewer.username
+        return None
+
+
+class AppealCreateSerializer(serializers.ModelSerializer):
+    reason = serializers.CharField(required=True, allow_blank=False)
+    evidence = serializers.ImageField(required=False, allow_null=True)
+
+    class Meta:
+        model = Appeal
+        fields = (
+            "reason",
+            "evidence",
+        )
+
+    def validate_evidence(self, evidence):
+        if evidence is None:
+            return evidence
+
+        if evidence.size > MAX_IMAGE_SIZE_BYTES:
+            raise serializers.ValidationError(
+                f"Ukuran foto maksimal {MAX_IMAGE_SIZE_MB} MB. "
+                f"File yang dipilih berukuran "
+                f"{evidence.size // (1024 * 1024)} MB."
+            )
+
+        if evidence.content_type not in ALLOWED_IMAGE_TYPES:
+            raise serializers.ValidationError(
+                "Format foto harus PNG atau JPEG."
+            )
+
+        return evidence
+
+    def validate(self, attrs):
+        complaint = self.context.get("complaint")
+        if complaint is None:
+            raise serializers.ValidationError(
+                {"detail": "Pengaduan tidak ditemukan."}
+            )
+
+        # 1. Hanya laporan REJECTED yang boleh dibanding.
+        if complaint.status != Complaint.Status.REJECTED:
+            raise serializers.ValidationError(
+                {"detail": "Hanya laporan REJECTED yang boleh dibanding."}
+            )
+
+        # 3. Satu laporan hanya boleh punya satu banding PENDING dalam satu waktu.
+        if Appeal.objects.filter(
+            complaint=complaint, status=Appeal.Status.PENDING
+        ).exists():
+            raise serializers.ValidationError(
+                {"detail": "Satu laporan hanya boleh punya satu banding PENDING dalam satu waktu."}
+            )
+
+        # 8. Foto dilarang untuk laporan PENCURIAN dan PELECEHAN_PERUNDUNGAN.
+        if (
+            complaint.sub_category in ComplaintSerializer.SENSITIVE_SUBCATEGORIES
+            and attrs.get("evidence")
+        ):
+            raise serializers.ValidationError(
+                {"evidence": ["Foto tidak dapat diunggah untuk laporan pencurian atau pelecehan/perundungan."]}
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        complaint = self.context["complaint"]
+        request = self.context["request"]
+        return Appeal.objects.create(
+            complaint=complaint,
+            submitted_by=request.user,
+            reason=validated_data["reason"],
+            evidence=validated_data.get("evidence"),
+            status=Appeal.Status.PENDING,
+        )
+
+    def to_representation(self, instance):
+        return AppealSerializer(instance, context=self.context).data
+
+
+class AppealDecisionSerializer(serializers.ModelSerializer):
+    status = serializers.ChoiceField(
+        choices=[Appeal.Status.ACCEPTED, Appeal.Status.DENIED],
+        required=True,
+    )
+    response_note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+
+    class Meta:
+        model = Appeal
+        fields = ("status", "response_note")
+
+    def validate(self, attrs):
+        if self.instance is not None and self.instance.status != Appeal.Status.PENDING:
+            raise serializers.ValidationError(
+                {"detail": "Keputusan hanya boleh diberikan pada banding yang masih PENDING."}
+            )
+        return attrs
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        new_status = validated_data["status"]
+        response_note = validated_data.get("response_note", "")
+
+        instance.status = new_status
+        instance.response_note = response_note
+        if request is not None and request.user.is_authenticated:
+            instance.reviewer = request.user
+        instance.reviewed_at = timezone.now()
+        instance.save()
+
+        # 5. Banding ACCEPTED: status laporan menjadi PENDING.
+        if new_status == Appeal.Status.ACCEPTED:
+            complaint = instance.complaint
+            complaint.status = Complaint.Status.PENDING
+            complaint.save()
+
+        return instance
+
+    def to_representation(self, instance):
+        return AppealSerializer(instance, context=self.context).data

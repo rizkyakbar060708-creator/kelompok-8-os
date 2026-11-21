@@ -16,6 +16,7 @@ import Profile from "../pages/user/Profile";
 import CreateComplaint from "../pages/user/CreateComplaint";
 import ComplaintDetail from "../pages/user/ComplaintDetail";
 import FloorPlan from "../pages/user/FloorPlan";
+import LostFound from "../pages/user/LostFound";
 
 import DashboardRedirector from "../components/auth/DashboardRedirector";
 
@@ -94,7 +95,27 @@ function AppRoutes() {
         <Route path="/complaints/akademik" element={<Complaints category="AKADEMIK" />} />
         <Route path="/complaints/create" element={<CreateComplaint />} />
         <Route path="/complaints/:id" element={<ComplaintDetail />} />
+        {/* Route kategori statis (bukan ":category") supaya tidak bentrok
+            dengan dinamis /complaints/:id yang sudah ada; React Router
+            memprioritaskan segmen statis, tapi eksplisit lebih jelas dan
+            type-safe. */}
+        <Route path="/complaints/keamanan" element={<Complaints category="KEAMANAN" />} />
+        <Route path="/complaints/fasilitas" element={<Complaints category="FASILITAS" />} />
+        <Route path="/complaints/akademik" element={<Complaints category="AKADEMIK" />} />
+        <Route path="/complaints/create" element={<CreateComplaint />} />
         <Route path="/denah" element={<FloorPlan />} />
+        {/* ProtectedRoute di sini redundan dengan guard level layout (semua
+            anak DashboardLayout sudah dibungkus ProtectedRoute), tapi tetap
+            ditulis eksplisit agar nanti kalau rute keluar dari layout,
+            pengamanannya tidak ikut hilang. Tanpa allowedRoles = semua role. */}
+        <Route
+          path="/lost-found"
+          element={
+            <ProtectedRoute>
+              <LostFound />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/profile" element={<Profile />} />
       </Route>
 

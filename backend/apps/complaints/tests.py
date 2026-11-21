@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 
 from apps.facilities.models import Facility
 
-from .models import Complaint
+from .models import Appeal, Complaint
 
 User = get_user_model()
 
@@ -1460,3 +1460,427 @@ class ComplaintSummaryTests(TestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.get(self.summary_url)
         self.assertEqual(response.data["total"], 4)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class AppealTests(TestCase):
+    """Fitur pengajuan banding atas laporan REJECTED.
+
+    Aturan yang diuji mengikuti keputusan produk: hanya laporan REJECTED yang
+    boleh dibanding, hanya pemiliknya yang boleh mengajukan, satu laporan
+    punya satu banding PENDING, dan hanya ADMIN yang boleh memutuskan.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.queue_url = "/api/appeals/"
+
+        self.student = User.objects.create_user(
+            username="student_a", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.other_student = User.objects.create_user(
+            username="student_b", password="Passw0rd!aaa", role=User.Role.STUDENT
+        )
+        self.staff = User.objects.create_user(
+            username="staff_a", password="Passw0rd!aaa", role=User.Role.STAFF
+        )
+        self.admin = User.objects.create_user(
+            username="admin_a", password="Passw0rd!aaa", role=User.Role.ADMIN
+        )
+
+        facility = Facility.objects.create(
+            name="Lampu Koridor", location="Gedung B - Lantai 1"
+        )
+        self.rejected = Complaint.objects.create(
+            reporter=self.student,
+            facility=facility,
+            title="Lampu lab mati",
+            description="Koridor gelap total sejak dua hari.",
+            status=Complaint.Status.REJECTED,
+        )
+        self.appeal_url = f"/api/complaints/{self.rejected.id}/appeals/"
+
+    def _create_appeal(self, **overrides):
+        values = {
+            "complaint": self.rejected,
+            "submitted_by": self.student,
+            "reason": "Ada bukti baru berupa foto lampu.",
+        }
+        values.update(overrides)
+
+        return Appeal.objects.create(**values)
+
+    def _submit_appeal(self, user, url=None, **extra):
+        self.client.force_authenticate(user)
+
+        payload = {"reason": "Ada bukti baru berupa foto lampu.", **extra}
+
+        return self.client.post(
+            url or self.appeal_url,
+            payload,
+            format="multipart",
+        )
+
+    def _decide(self, user, appeal, decision, note="Catatan keputusan."):
+        self.client.force_authenticate(user)
+
+        return self.client.patch(
+            f"/api/appeals/{appeal.id}/",
+            {"status": decision, "response_note": note},
+            format="json",
+        )
+
+    # --- pengajuan banding ---------------------------------------------------
+
+    def test_owner_can_appeal_own_rejected_complaint(self):
+        response = self._submit_appeal(self.student)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], Appeal.Status.PENDING)
+        self.assertEqual(response.data["complaint"], self.rejected.id)
+        self.assertEqual(response.data["complaint_title"], self.rejected.title)
+        self.assertIsNone(response.data["reviewer_name"])
+        self.assertIsNone(response.data["evidence"])
+        self.assertEqual(response.data["response_note"], "")
+
+        appeal = Appeal.objects.get(id=response.data["id"])
+        self.assertEqual(appeal.submitted_by, self.student)
+        self.assertIsNone(appeal.reviewer)
+
+    def test_reason_is_required(self):
+        response = self._submit_appeal(self.student, reason="")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("reason", response.data)
+
+    def test_non_rejected_complaint_cannot_be_appealed(self):
+        pending = Complaint.objects.create(
+            reporter=self.student,
+            title="Laporan baru",
+            description="Masih diproses.",
+        )
+
+        response = self._submit_appeal(
+            self.student, url=f"/api/complaints/{pending.id}/appeals/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Appeal.objects.exists())
+
+    def test_resolved_complaint_cannot_be_appealed(self):
+        # Aturannya "hanya REJECTED", jadi RESOLVED, IN_PROGRESS, dan PENDING
+        # semuanya ditolak, bukan hanya yang masih diproses.
+        resolved = Complaint.objects.create(
+            reporter=self.student,
+            title="Laporan lewat",
+            description="Sudah ditutup.",
+            status=Complaint.Status.RESOLVED,
+        )
+
+        response = self._submit_appeal(
+            self.student, url=f"/api/complaints/{resolved.id}/appeals/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_appealing_other_complaint_returns_404(self):
+        response = self._submit_appeal(self.other_student)
+
+        # 404, bukan 403: queryset di-scope sehingga laporan milik orang lain
+        # tidak pernah terlihat, sama seperti detail pengaduan.
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_staff_cannot_appeal_other_complaint(self):
+        # Staf dapat membaca laporan ini, tapi mengajukan banding tetap hanya
+        # milik pemilik laporan.
+        response = self._submit_appeal(self.staff)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Appeal.objects.exists())
+
+    def test_admin_cannot_appeal_other_complaint(self):
+        response = self._submit_appeal(self.admin)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_only_one_pending_appeal_per_complaint(self):
+        self._create_appeal(status=Appeal.Status.PENDING)
+
+        response = self._submit_appeal(self.student)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Appeal.objects.count(), 1)
+
+    def test_new_appeal_allowed_after_previous_denied(self):
+        # Satu PENDING dalam satu waktu, bukan satu banding seumur hidup.
+        self._create_appeal(status=Appeal.Status.DENIED)
+
+        response = self._submit_appeal(self.student)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_appeal_history_visibility_and_ordering(self):
+        newest = self._create_appeal(status=Appeal.Status.DENIED)
+        oldest = self._create_appeal(
+            status=Appeal.Status.ACCEPTED, reason="Banding pertama."
+        )
+        pending = self._create_appeal(reason="Banding berjalan.")
+
+        # Ketiga banding dibuat buatan berdekatan sehingga created_at bisa
+        # identik dari granularity detik SQLite. Stempel waktu diubah agar
+        # urutan "terbaru dulu" benar-benar teruji, mengikuti pola di
+        # ComplaintFilterTests.
+        Appeal.objects.filter(id=oldest.id).update(
+            created_at=timezone.now() - timedelta(days=2)
+        )
+        Appeal.objects.filter(id=newest.id).update(
+            created_at=timezone.now() - timedelta(days=1)
+        )
+
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.appeal_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["id"] for item in response.data],
+            [pending.id, newest.id, oldest.id],
+        )
+
+    def test_appeal_history_of_other_complaint_returns_404(self):
+        self._create_appeal()
+
+        self.client.force_authenticate(self.other_student)
+        response = self.client.get(self.appeal_url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_staff_cannot_see_history_of_harassment_complaint(self):
+        sensitive = Complaint.objects.create(
+            reporter=self.student,
+            title="Laporan sensitif",
+            description="Rincian laporan sensitif.",
+            category=Complaint.Category.KEAMANAN,
+            sub_category=Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+            status=Complaint.Status.REJECTED,
+        )
+
+        self.client.force_authenticate(self.staff)
+        response = self.client.get(f"/api/complaints/{sensitive.id}/appeals/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    # --- bukti dan validasi gambar -------------------------------------------
+
+    def test_evidence_image_is_accepted_and_returned_as_media_path(self):
+        evidence = SimpleUploadedFile(
+            "bukti.png", image_bytes(), content_type="image/png"
+        )
+
+        response = self._submit_appeal(self.student, evidence=evidence)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            Appeal.objects.get(id=response.data["id"]).evidence.name.startswith(
+                "appeals/"
+            )
+        )
+
+    def test_evidence_in_disallowed_format_is_rejected(self):
+        evidence = SimpleUploadedFile(
+            "bukti.bmp", image_bytes(fmt="BMP"), content_type="image/png"
+        )
+
+        response = self._submit_appeal(self.student, evidence=evidence)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("evidence", response.data)
+
+    def test_non_image_evidence_is_rejected(self):
+        evidence = SimpleUploadedFile(
+            "bukti.png", b"ini bukan gambar", content_type="image/png"
+        )
+
+        response = self._submit_appeal(self.student, evidence=evidence)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_oversized_evidence_is_rejected(self):
+        evidence = SimpleUploadedFile(
+            "besar.png", png_in_size_range(), content_type="image/png"
+        )
+
+        response = self._submit_appeal(self.student, evidence=evidence)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("maksimal 5 MB", " ".join(response.data["evidence"]))
+
+    def test_evidence_is_forbidden_for_sensitive_sub_categories(self):
+        self.client.force_authenticate(self.student)
+
+        for sub_category in (
+            Complaint.SubCategory.PENCURIAN,
+            Complaint.SubCategory.PELECEHAN_PERUNDUNGAN,
+        ):
+            sensitive = Complaint.objects.create(
+                reporter=self.student,
+                title="Laporan sensitif",
+                description="Rincian laporan sensitif.",
+                category=Complaint.Category.KEAMANAN,
+                sub_category=sub_category,
+                status=Complaint.Status.REJECTED,
+            )
+            sensitive_url = f"/api/complaints/{sensitive.id}/appeals/"
+
+            with_evidence = self.client.post(
+                sensitive_url,
+                {
+                    "reason": "Banding dengan bukti foto.",
+                    "evidence": SimpleUploadedFile(
+                        "bukti.png", image_bytes(), content_type="image/png"
+                    ),
+                },
+                format="multipart",
+            )
+
+            self.assertEqual(with_evidence.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("evidence", with_evidence.data)
+
+            # Tanpa bukti, banding atas laporan sensitif tetap boleh.
+            without_evidence = self.client.post(
+                sensitive_url,
+                {"reason": "Banding tanpa bukti foto."},
+                format="multipart",
+            )
+            self.assertEqual(
+                without_evidence.status_code, status.HTTP_201_CREATED
+            )
+
+    # --- keputusan banding -----------------------------------------------------
+
+    def test_student_cannot_decide_appeal(self):
+        appeal = self._create_appeal()
+
+        response = self._decide(self.student, appeal, Appeal.Status.ACCEPTED)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        appeal.refresh_from_db()
+        self.assertEqual(appeal.status, Appeal.Status.PENDING)
+
+    def test_staff_cannot_decide_appeal(self):
+        appeal = self._create_appeal()
+
+        response = self._decide(self.staff, appeal, Appeal.Status.ACCEPTED)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        appeal.refresh_from_db()
+        self.assertEqual(appeal.status, Appeal.Status.PENDING)
+
+    def test_admin_accepting_appeal_reopens_complaint_to_pending(self):
+        appeal = self._create_appeal()
+
+        response = self._decide(
+            self.admin, appeal, Appeal.Status.ACCEPTED, note="Bukti cukup."
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], Appeal.Status.ACCEPTED)
+        self.assertEqual(response.data["response_note"], "Bukti cukup.")
+        self.assertEqual(response.data["reviewer_name"], self.admin.username)
+        self.assertIsNotNone(response.data["reviewed_at"])
+
+        appeal.refresh_from_db()
+        self.rejected.refresh_from_db()
+        self.assertEqual(appeal.reviewer, self.admin)
+        self.assertIsNotNone(appeal.reviewed_at)
+        # Masuk antrean lagi, bukan otomatis disetujui.
+        self.assertEqual(self.rejected.status, Complaint.Status.PENDING)
+
+    def test_admin_denying_appeal_keeps_complaint_status(self):
+        appeal = self._create_appeal()
+
+        response = self._decide(
+            self.admin, appeal, Appeal.Status.DENIED, note="Alasan kurang kuat."
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        appeal.refresh_from_db()
+        self.rejected.refresh_from_db()
+        self.assertEqual(appeal.status, Appeal.Status.DENIED)
+        self.assertEqual(appeal.response_note, "Alasan kurang kuat.")
+        self.assertEqual(appeal.reviewer, self.admin)
+        self.assertIsNotNone(appeal.reviewed_at)
+        self.assertEqual(self.rejected.status, Complaint.Status.REJECTED)
+
+    def test_second_decision_on_decided_appeal_is_rejected(self):
+        appeal = self._create_appeal(status=Appeal.Status.DENIED)
+
+        response = self._decide(
+            self.admin, appeal, Appeal.Status.ACCEPTED, note="Ubah pikiran."
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        appeal.refresh_from_db()
+        self.assertEqual(appeal.status, Appeal.Status.DENIED)
+
+    def test_decision_status_must_be_accepted_or_denied(self):
+        appeal = self._create_appeal()
+
+        response = self._decide(self.admin, appeal, Appeal.Status.PENDING)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_accepting_appeal_clears_stale_resolved_at(self):
+        # Defensive: status laporan selama banding REJECTED, tapi resolved_at
+        # tidak boleh tertinggal bila status kembali PENDING.
+        self.rejected.resolved_at = timezone.now()
+        self.rejected.save()
+
+        appeal = self._create_appeal()
+        self._decide(self.admin, appeal, Appeal.Status.ACCEPTED)
+
+        self.rejected.refresh_from_db()
+        self.assertIsNone(self.rejected.resolved_at)
+
+    # --- antrean banding ---------------------------------------------------------
+
+    def test_queue_is_admin_only(self):
+        self.client.force_authenticate(self.student)
+        student_response = self.client.get(self.queue_url)
+
+        self.client.force_authenticate(self.staff)
+        staff_response = self.client.get(self.queue_url)
+
+        self.client.force_authenticate(self.admin)
+        admin_response = self.client.get(self.queue_url)
+
+        self.assertEqual(
+            student_response.status_code, status.HTTP_403_FORBIDDEN
+        )
+        self.assertEqual(staff_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+
+    def test_queue_filters_by_status(self):
+        pending = self._create_appeal()
+        self._create_appeal(status=Appeal.Status.DENIED)
+
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.get(self.queue_url, {"status": "PENDING"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [pending.id])
+
+    def test_queue_returns_appeal_json_contract(self):
+        appeal = self._create_appeal()
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.queue_url, {"status": "PENDING"})
+
+        item = response.data[0]
+        self.assertEqual(item["id"], appeal.id)
+        self.assertEqual(item["complaint"], self.rejected.id)
+        self.assertEqual(item["complaint_title"], self.rejected.title)
+        self.assertIsNone(item["reviewer_name"])
+        self.assertIsNone(item["evidence"])

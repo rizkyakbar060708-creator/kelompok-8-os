@@ -10,8 +10,10 @@ import {
 import api from "../../services/api";
 import axios from "axios";
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../../constant";
+import { REVEAL_STAGGER } from "../../lib/motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { isAdmin } from "../../utils/roles";
+import Reveal from "../../components/ui/Reveal";
 
 function Login() {
   const navigate = useNavigate();
@@ -75,21 +77,24 @@ function Login() {
       <div className="orb bottom-[6%] right-[18%] h-72 w-72 bg-amber-300/25" />
 
       <div className="relative w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="brand-mark mx-auto mb-4 h-12 w-12 rounded-2xl">
-            <LockKeyhole size={21} />
+        <Reveal delay={0}>
+          <div className="mb-8 text-center">
+            <div className="brand-mark mx-auto mb-4 h-12 w-12 rounded-2xl">
+              <LockKeyhole size={21} />
+            </div>
+
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              CampusCare
+            </h1>
+
+            <p className="mt-2 text-sm text-muted-ambient">
+              Sistem Pengaduan Fasilitas Kampus
+            </p>
           </div>
+        </Reveal>
 
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            CampusCare
-          </h1>
-
-          <p className="mt-2 text-sm text-muted-ambient">
-            Sistem Pengaduan Fasilitas Kampus
-          </p>
-        </div>
-
-        <div className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8">
+        <Reveal delay={REVEAL_STAGGER}>
+          <div className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8">
           <span className="orb -left-20 -top-20 h-56 w-56 bg-indigo-400/25" />
 
           <div className="relative mb-6">
@@ -210,10 +215,13 @@ function Login() {
             </Link>
           </p>
         </div>
+        </Reveal>
 
-        <p className="mt-6 text-center text-xs text-muted-ambient">
-          © 2026 CampusCare
-        </p>
+        <Reveal delay={REVEAL_STAGGER * 2} className="mt-6">
+          <p className="text-center text-xs text-muted-ambient">
+            © 2026 CampusCare
+          </p>
+        </Reveal>
       </div>
     </div>
   );

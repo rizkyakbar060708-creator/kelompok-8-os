@@ -3,12 +3,18 @@ import {
   CircleAlert,
   Clock3,
   FileText,
+  Gavel,
   LoaderCircle,
   RefreshCw,
+  Undo2,
   XCircle,
 } from "lucide-react"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
+import Modal from "../../components/ui/Modal"
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
+import axios from "axios"
 
 import AttentionPanel from "../../components/dashboard/AttentionPanel"
 import CategoryCard from "../../components/dashboard/CategoryCard"
@@ -23,14 +29,23 @@ import StatusBadge from "../../components/ui/StatusBadge"
 import type { ComplaintCategoryName } from "../../services/complaintService"
 import { getComplaints } from "../../services/complaintService"
 import { getFacilities, type Facility } from "../../services/facilityService"
+import {
+  decideAppeal,
+  getAppealQueue,
+  type Appeal,
+} from "../../services/appealService"
 import { useAuth } from "../../contexts/AuthContext"
 import { isAdmin } from "../../utils/roles"
+import { errorMessage } from "../../utils/errorMessage"
+import { resolveMediaUrl } from "../../utils/media"
+import { useComplaintSummary } from "../../contexts/ComplaintSummaryContext"
 import { CATEGORIES, CATEGORY_CONFIG } from "../../utils/categoryConfig"
 import {
   ageLabel,
   avgResolutionHours,
   buildCategoryStats,
   dailyTrend,
+  formatDate,
   formatDelta,
   formatNumber,
   formatResolutionHours,
@@ -83,6 +98,7 @@ type DeltaSentiment = "good" | "bad" | "neutral"
 
 function AdminDashboard() {
   const { user } = useAuth()
+  const { refresh: refreshSummary } = useComplaintSummary()
   const [rows, setRows] = useState<ComplaintRow[] | null>(null)
   const [facilities, setFacilities] = useState<Facility[]>([])
   const [error, setError] = useState("")
@@ -310,7 +326,7 @@ function AdminDashboard() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* A. Header: sapaan, tanggal, filter rentang, refresh */}
-      <section className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+      <Reveal as="section" className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end" delay={0}>
         <div>
           <p className="eyebrow mb-2">Panel administrator</p>
           <h1 className="page-title">
@@ -366,7 +382,7 @@ function AdminDashboard() {
             Muat ulang
           </button>
         </div>
-      </section>
+      </Reveal>
 
       {error ? (
         <div
@@ -385,52 +401,67 @@ function AdminDashboard() {
         </div>
       ) : null}
 
+      {/* Antrean banding: hanya ADMIN; endpoint queue membalas 403 untuk
+          role lain, jadi panel ini tidak boleh dirender untuk staf. Setelah
+          keputusan tersimpan, laporan dimuat ulang dari sumber yang sama. */}
+      {isAdmin(user?.role) && (
+        <AppealQueuePanel
+          onDecided={() => {
+            setRetryKey((key) => key + 1)
+            refreshSummary()
+          }}
+        />
+      )}
+
       {/* B. KPI global dengan delta vs periode sebelumnya */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <RevealList as="section" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => {
           const delta = deltas.get(metric.key)
           const text = delta ? formatDelta(delta) : null
 
           return (
-            <KpiCard
-              key={metric.key}
-              label={metric.label}
-              value={metric.value}
-              detail={metric.detail}
-              icon={metric.icon}
-              orb={metric.orb}
-              chipTone={metric.tone}
-              href={metric.href}
-              loading={isLoading}
-              delta={
-                range === null
-                  ? null
-                  : {
+            <RevealItem key={metric.key}>
+              <KpiCard
+                key={metric.key}
+                label={metric.label}
+                value={metric.value}
+                detail={metric.detail}
+                icon={metric.icon}
+                orb={metric.orb}
+                chipTone={metric.tone}
+                href={metric.href}
+                loading={isLoading}
+                delta={
+                  range === null
+                    ? null
+                    : {
                       text,
                       tone: metric.sentiment,
                       windowLabel: delta && delta.previous > 0
                         ? `vs ${range} hari sebelumnya`
                         : runtimeDeltaLabel(delta, range),
                     }
-              }
-            />
+                }
+              />
+            </RevealItem>
           )
         })}
-      </section>
+      </RevealList>
 
       {/* C. Ringkasan per kategori (kartu + sparkline) */}
-      <section className="grid gap-4 md:grid-cols-3">
+      <RevealList as="section" className="grid gap-4 md:grid-cols-3">
         {CATEGORIES.map((category) => (
-          <CategoryCard
-            key={category}
-            stat={categoryStats[category]}
-            active={activeTab === category}
-            onSelect={() => {
-              setActiveTab(activeTab === category ? "ALL" : category)
-            }}
-          />
+          <RevealItem key={category}>
+            <CategoryCard
+              stat={categoryStats[category]}
+              active={activeTab === category}
+              onSelect={() => {
+                setActiveTab(activeTab === category ? "ALL" : category)
+              }}
+            />
+          </RevealItem>
         ))}
-      </section>
+      </RevealList>
 
       {/* C2. Grafik utama: donut kategori, tren harian, stacked status, top-5 */}
       <section className="grid gap-6 xl:grid-cols-[1fr_1.5fr]">
@@ -638,6 +669,347 @@ function AdminDashboard() {
         </div>
       </section>
     </div>
+  )
+}
+
+// Panel antrean banding khusus ADMIN. Panel mem-fetch sendiri daftar banding
+// PENDING lewat getAppealQueue(); daftar itu mengembalikan 403 untuk role
+// lain, jadi komponen ini hanya dirender bila isAdmin() benar. Keputusan
+// Terima/Tolak berjalan lewat modal agar catatan untuk pelapor ditulis di satu
+// tempat, mengikuti pola modal konfirmasi di LostFound.
+interface AppealQueuePanelProps {
+  // Dipanggil setelah keputusan tersimpan: menghidupkan ulang muat pengaduan
+  // (status laporan bisa berubah kembali PENDING) dan memuat ulang badge
+  // sidebar lewat ComplaintSummaryProvider.
+  onDecided: () => void
+}
+
+interface AppealDecision {
+  status: "ACCEPTED" | "DENIED"
+  label: string
+  modalTitle: string
+  description: string
+  rowClass: string
+  confirmClass: string
+  icon: typeof Undo2
+}
+
+const APPEAL_DECISIONS: Record<
+  "ACCEPTED" | "DENIED",
+  AppealDecision
+> = {
+  ACCEPTED: {
+    status: "ACCEPTED",
+    label: "Terima",
+    modalTitle: "Terima Banding",
+    // Aturan alur (design.md): banding diterima mengembalikan laporan ke
+    // PENDING di backend, jadi ada penjelasan eksplisit, bukan hanya warna.
+    description:
+      "Banding akan diterima dan status laporan kembali menjadi Menunggu untuk ditindaklanjuti pengelola.",
+    rowClass:
+      "btn-secondary px-3 py-2 text-xs border-emerald-200 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800",
+    confirmClass: "btn-primary w-full sm:w-auto",
+    icon: Undo2,
+  },
+  DENIED: {
+    status: "DENIED",
+    label: "Tolak",
+    modalTitle: "Tolak Banding",
+    // Banding ditolak tidak mengubah status laporan; catatan menyertai
+    // keputusan supaya pelapor tahu alasannya.
+    description:
+      "Banding akan ditolak dan status laporan tetap. Catatan ini akan ditampilkan kepada pelapor.",
+    rowClass:
+      "btn-secondary px-3 py-2 text-xs border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50 hover:text-red-800",
+    confirmClass:
+      "btn-secondary w-full border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50 hover:text-red-800 sm:w-auto",
+    icon: XCircle,
+  },
+}
+
+function AppealQueuePanel({ onDecided }: AppealQueuePanelProps) {
+  const [appeals, setAppeals] = useState<Appeal[] | null>(null)
+  const [actionError, setActionError] = useState("")
+  const [retryKey, setRetryKey] = useState(0)
+
+  const [target, setTarget] = useState<Appeal | null>(null)
+  const [decision, setDecision] = useState<AppealDecision | null>(null)
+  const [note, setNote] = useState("")
+  const [isDeciding, setIsDeciding] = useState(false)
+  const [decisionError, setDecisionError] = useState("")
+
+  useEffect(() => {
+    let active = true
+
+    const load = async () => {
+      try {
+        const data = await getAppealQueue()
+
+        if (!active) {
+          return
+        }
+
+        setAppeals(data.items)
+        setActionError("")
+      } catch {
+        if (!active) {
+          return
+        }
+
+        setAppeals([])
+        setActionError("Gagal memuat antrean banding. Coba lagi.")
+      }
+    }
+
+    void load()
+
+    return () => {
+      active = false
+    }
+  }, [retryKey])
+
+  // `appeals` null berarti muat pertama; `queue` berisi baris terakhir yang
+  // diketahui supaya pembaruan antrean tidak mengosongkan panel sekejap.
+  const isLoading = appeals === null
+  const queue = appeals ?? []
+
+  const openDecision = (appeal: Appeal, next: AppealDecision) => {
+    setTarget(appeal)
+    setDecision(next)
+    setNote("")
+    setDecisionError("")
+  }
+
+  // Modal tidak boleh ditutup saat keputusan sedang berjalan, pola yang sama
+  // dengan DeleteLostFoundModal.
+  const closeModal = () => {
+    if (!isDeciding) {
+      setTarget(null)
+      setDecision(null)
+      setDecisionError("")
+    }
+  }
+
+  const handleConfirm = async () => {
+    if (!target || !decision) {
+      return
+    }
+
+    setDecisionError("")
+    setIsDeciding(true)
+
+    try {
+      await decideAppeal(target.id, {
+        status: decision.status,
+        // Catatan kosong tidak dikirim: field yang absen tidak menimpa kolom
+        // response_note dengan string kosong.
+        response_note: note.trim() || undefined,
+      })
+
+      // Aksi sukses: muat ulang daftar banding di sini dan data laporan lewat
+      // onDecided; "berhasil" tampil hanya karena server sudah menjawab 2xx.
+      setRetryKey((key) => key + 1)
+      onDecided()
+
+      setTarget(null)
+      setDecision(null)
+    } catch (requestError: unknown) {
+      if (axios.isAxiosError(requestError) && requestError.response?.status === 403) {
+        setDecisionError("Kamu tidak memiliki izin memutus banding ini.")
+      } else if (axios.isAxiosError(requestError)) {
+        setDecisionError(
+          errorMessage(requestError.response?.data) ??
+            "Gagal memutus banding. Coba lagi.",
+        )
+      } else {
+        setDecisionError("Tidak dapat terhubung ke server.")
+      }
+    } finally {
+      setIsDeciding(false)
+    }
+  }
+
+  return (
+    <Card className="relative overflow-hidden">
+      <span className="orb -right-10 -top-10 h-32 w-32 bg-amber-300/22" />
+
+      <div className="relative">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-slate-900">
+            Antrean Banding
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Keberatan atas laporan yang ditolak, menunggu keputusanmu.
+          </p>
+        </div>
+
+        {actionError ? (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="alert-error mt-4 flex items-start gap-3 rounded-xl px-4 py-3 text-sm"
+          >
+            <CircleAlert size={17} className="mt-0.5 shrink-0" />
+            <span className="flex-1">{actionError}</span>
+            <button
+              type="button"
+              onClick={() => setRetryKey((key) => key + 1)}
+              className="shrink-0 self-center text-sm font-semibold text-indigo-600 underline-offset-2 hover:text-violet-700 hover:underline"
+            >
+              Coba lagi
+            </button>
+          </div>
+        ) : isLoading ? (
+          <div className="flex items-center justify-center gap-3 py-8">
+            <LoaderCircle size={20} className="animate-spin text-slate-500" />
+            <p className="text-sm text-slate-600">Memuat antrean banding...</p>
+          </div>
+        ) : queue.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-500">
+            Tidak ada banding yang menunggu diputuskan.
+          </p>
+        ) : (
+          <ul className="mt-4 divide-y divide-slate-900/[0.07]">
+            {queue.map((appeal) => {
+              const evidenceUrl = resolveMediaUrl(appeal.evidence)
+
+              return (
+                <li key={appeal.id} className="py-4 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        to={`/complaints/${appeal.complaint}`}
+                        className="text-sm font-semibold text-slate-800 transition hover:text-indigo-600"
+                      >
+                        {appeal.complaint_title}
+                      </Link>
+
+                      <p className="mt-1 text-sm leading-6 whitespace-pre-line text-slate-600">
+                        {appeal.reason}
+                      </p>
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        Diajukan {formatDate(appeal.created_at)}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 gap-2">
+                      {Object.values(APPEAL_DECISIONS).map((option) => (
+                        <button
+                          key={option.status}
+                          type="button"
+                          onClick={() => openDecision(appeal, option)}
+                          className={option.rowClass}
+                        >
+                          <option.icon size={15} />
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* evidence adalah path "/media/..." tanpa host; wajib lewat
+                      resolveMediaUrl() sebelum dipakai sebagai src (pola foto
+                      pengaduan di ComplaintDetail). */}
+                  {evidenceUrl && (
+                    <img
+                      src={evidenceUrl}
+                      alt={`Bukti banding: ${appeal.complaint_title}`}
+                      className="mt-3 block max-h-56 w-full rounded-xl object-cover sm:max-w-xs"
+                    />
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+
+      <Modal
+        open={target !== null && decision !== null}
+        onClose={closeModal}
+        title={decision === null ? "" : decision.modalTitle}
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-6 text-slate-600">
+            {decision === null ? "" : decision.description} Keputusan akan
+            diberlakukan pada banding laporan{" "}
+            <span className="font-semibold text-slate-800">
+              {target ? `"${target.complaint_title}"` : ""}
+            </span>
+            .
+          </p>
+
+          <div>
+            <label
+              htmlFor="appeal-response-note"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Catatan untuk pelapor{" "}
+              <span className="text-slate-400">(opsional)</span>
+            </label>
+
+            <textarea
+              id="appeal-response-note"
+              rows={3}
+              className="input-base resize-none"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder={
+                decision?.status === "ACCEPTED"
+                  ? "Contoh: Banding diterima, laporan kembali diproses pengelola."
+                  : "Contoh: Alasan banding tidak dapat diterima."
+              }
+            />
+          </div>
+
+          {decisionError && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="alert-error flex items-start gap-3 rounded-xl px-4 py-3 text-sm"
+            >
+              <CircleAlert size={17} className="mt-0.5 shrink-0" />
+              <span>{decisionError}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-3 border-t border-slate-900/[0.08] pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={closeModal}
+              disabled={isDeciding}
+              className="btn-secondary w-full sm:w-auto"
+            >
+              Batal
+            </button>
+
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={isDeciding || !decision}
+              className={decision === null ? "btn-primary w-full sm:w-auto" : decision.confirmClass}
+            >
+              {isDeciding ? (
+                <>
+                  <LoaderCircle size={17} className="animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  {decision === null ? (
+                    <Gavel size={17} />
+                  ) : (
+                    <decision.icon size={17} />
+                  )}
+                  {decision === null ? "" : decision.label}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </Card>
   )
 }
 
