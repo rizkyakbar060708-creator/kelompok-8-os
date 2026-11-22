@@ -1,6 +1,12 @@
 import { motion, useReducedMotion } from "motion/react"
 import type { ReactNode } from "react"
 
+import {
+  REVEAL_OFFSET_Y,
+  REVEAL_VIEWPORT,
+  revealTransition,
+} from "../../lib/motion"
+
 const MOTION_TAGS = {
   div: motion.div,
   section: motion.section,
@@ -24,9 +30,20 @@ interface RevealProps {
   delay?: number
   className?: string
   as?: RevealTag
+  id?: string
+  role?: string
+  ariaLabel?: string
 }
 
-function Reveal({ children, delay = 0, className, as = "div" }: RevealProps) {
+function Reveal({
+  children,
+  delay = 0,
+  className,
+  as = "div",
+  id,
+  role,
+  ariaLabel,
+}: RevealProps) {
   const reducedMotion = useReducedMotion()
 
   // prefers-reduced-motion: konten langsung tampil pada posisi akhir, tanpa
@@ -34,22 +51,30 @@ function Reveal({ children, delay = 0, className, as = "div" }: RevealProps) {
   if (reducedMotion) {
     const PlainTag = PLAIN_TAGS[as]
 
-    return <PlainTag className={className}>{children}</PlainTag>
+    return (
+      <PlainTag
+        id={id}
+        role={role}
+        aria-label={ariaLabel}
+        className={className}
+      >
+        {children}
+      </PlainTag>
+    )
   }
 
   const MotionTag = MOTION_TAGS[as]
 
   return (
     <MotionTag
+      id={id}
+      role={role}
+      aria-label={ariaLabel}
       className={className}
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: REVEAL_OFFSET_Y }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.15 }}
-      transition={{
-        duration: 0.6,
-        ease: [0.22, 1, 0.36, 1],
-        delay,
-      }}
+      viewport={REVEAL_VIEWPORT}
+      transition={revealTransition(delay)}
     >
       {children}
     </MotionTag>

@@ -14,9 +14,11 @@ import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 
 import Modal from "../../components/ui/Modal"
+import Reveal from "../../components/ui/Reveal"
 import Spinner from "../../components/ui/Spinner"
 import { useAuth } from "../../contexts/AuthContext"
 import { getFacilities, type Facility } from "../../services/facilityService"
+import { REVEAL_STAGGER } from "../../lib/motion"
 import { getFacilityStatusMeta } from "../../utils/facilityStatus"
 import {
   ROOM_TYPE_CONFIG,
@@ -184,7 +186,7 @@ function FloorPlan() {
       />
 
       {/* 1. Floor Mode Switcher — Di bagian kiri atas area konten, tepat di sebelah kanan sidebar */}
-      <div className="flex items-center justify-start">
+      <Reveal className="flex items-center justify-start">
         <div
           role="tablist"
           aria-label="Mode denah lantai"
@@ -212,10 +214,10 @@ function FloorPlan() {
             )
           })}
         </div>
-      </div>
+      </Reveal>
 
       {/* 2. Header halaman */}
-      <div>
+      <Reveal delay={REVEAL_STAGGER}>
         <p className="eyebrow mb-1">Denah Kelas Reguler Siang Banjarmasin</p>
         <h1 className="page-title text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
           Prodi TI & Prodi SI FTI UNISKA
@@ -223,7 +225,7 @@ function FloorPlan() {
         <p className="page-subtitle mt-1">
           Denah interaktif fasilitas dan ruang perkuliahan Gedung B.
         </p>
-      </div>
+      </Reveal>
 
       {/* State Error bila gagal memuat fasilitas */}
       {error && (
@@ -258,7 +260,10 @@ function FloorPlan() {
       )}
 
       {/* Legenda tipe ruang */}
-      <div className="glass-panel flex flex-wrap items-center justify-between gap-4 rounded-2xl p-4 sm:px-6">
+      <Reveal
+        delay={REVEAL_STAGGER * 2}
+        className="glass-panel flex flex-wrap items-center justify-between gap-4 rounded-2xl p-4 sm:px-6"
+      >
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
           <Compass size={15} />
           <span>Legenda Tipe Ruang</span>
@@ -287,13 +292,15 @@ function FloorPlan() {
             <span className="text-red-600 font-semibold">Tangga</span>
           </div>
         </div>
-      </div>
+      </Reveal>
 
       {/* 3. Area Utama: Denah Gedung B */}
-      <div
+      <Reveal
+        as="div"
+        delay={REVEAL_STAGGER * 3}
         id="floor-mode-content"
         role="region"
-        aria-label="Denah Gedung B"
+        ariaLabel="Denah Gedung B"
         className="glass-panel relative overflow-hidden rounded-3xl p-4 sm:p-7"
       >
         {isLoading ? (
@@ -457,7 +464,7 @@ function FloorPlan() {
             )}
           </div>
         )}
-      </div>
+      </Reveal>
 
       {/* Bagian Fasilitas Tingkat Lantai (Bila ada yang hanya mencantumkan lantai) */}
       {(() => {

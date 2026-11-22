@@ -12,6 +12,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react"
 
 import Card from "../../components/ui/Card"
 import EmptyState from "../../components/ui/EmptyState"
+import Reveal from "../../components/ui/Reveal"
+import { REVEAL_STAGGER } from "../../lib/motion"
 import { errorMessage } from "../../utils/errorMessage"
 import {
   createFacility,
@@ -180,7 +182,10 @@ function FacilitiesAdmin() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <Reveal
+        as="section"
+        className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"
+      >
         <div>
           <p className="eyebrow mb-2">Data master</p>
           <h1 className="page-title">Kelola Fasilitas</h1>
@@ -199,7 +204,7 @@ function FacilitiesAdmin() {
             Tambah Fasilitas
           </button>
         )}
-      </section>
+      </Reveal>
 
       {error ? (
         <div
@@ -396,7 +401,10 @@ function FacilitiesAdmin() {
         </Card>
       )}
 
-      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center">
+      <Reveal
+        delay={REVEAL_STAGGER}
+        className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center"
+      >
         <div className="relative flex-1">
           <Search
             size={17}
@@ -418,7 +426,7 @@ function FacilitiesAdmin() {
             ? "Memuat..."
             : `${visibleFacilities.length} dari ${facilities?.length ?? 0} fasilitas`}
         </p>
-      </div>
+      </Reveal>
 
       {isPaginated && (
         <p
@@ -436,56 +444,58 @@ function FacilitiesAdmin() {
           <p>Memuat fasilitas...</p>
         </div>
       ) : visibleFacilities.length > 0 ? (
-        <Card className="overflow-hidden p-0">
-          <ul className="divide-y divide-slate-900/[0.07]">
-            {visibleFacilities.map((facility) => {
-              const meta = statusMeta[facility.status] ?? {
-                label: facility.status,
-                className: "bg-slate-100 text-slate-600",
-              }
+        <Reveal delay={REVEAL_STAGGER * 2}>
+          <Card className="overflow-hidden p-0">
+            <ul className="divide-y divide-slate-900/[0.07]">
+              {visibleFacilities.map((facility) => {
+                const meta = statusMeta[facility.status] ?? {
+                  label: facility.status,
+                  className: "bg-slate-100 text-slate-600",
+                }
 
-              return (
-                <li
-                  key={facility.id}
-                  className="flex flex-wrap items-center gap-4 px-5 py-4 transition hover:bg-white/70 sm:px-6"
-                >
-                  <span className="glass-chip h-11 w-11 shrink-0 border-white/70 bg-white/65 text-indigo-600">
-                    <Building2 size={19} />
-                  </span>
+                return (
+                  <li
+                    key={facility.id}
+                    className="flex flex-wrap items-center gap-4 px-5 py-4 transition hover:bg-white/70 sm:px-6"
+                  >
+                    <span className="glass-chip h-11 w-11 shrink-0 border-white/70 bg-white/65 text-indigo-600">
+                      <Building2 size={19} />
+                    </span>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-800">
-                      {facility.name}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-slate-500">
-                      {facility.location}
-                    </p>
-                    {facility.description && (
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                        {facility.description}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        {facility.name}
                       </p>
-                    )}
-                  </div>
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {facility.location}
+                      </p>
+                      {facility.description && (
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                          {facility.description}
+                        </p>
+                      )}
+                    </div>
 
-                  <span
-                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${meta.className}`}
-                  >
-                    {meta.label}
-                  </span>
+                    <span
+                      className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${meta.className}`}
+                    >
+                      {meta.label}
+                    </span>
 
-                  <button
-                    type="button"
-                    onClick={() => openEditForm(facility)}
-                    className="btn-secondary shrink-0 py-2"
-                  >
-                    <Pencil size={15} />
-                    Ubah
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </Card>
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(facility)}
+                      className="btn-secondary shrink-0 py-2"
+                    >
+                      <Pencil size={15} />
+                      Ubah
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
+        </Reveal>
       ) : (
         <EmptyState
           icon={Building2}

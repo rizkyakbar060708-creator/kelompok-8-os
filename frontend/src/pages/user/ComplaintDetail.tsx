@@ -17,6 +17,7 @@ import axios from "axios"
 
 import StatusBadge from "../../components/ui/StatusBadge"
 import Card from "../../components/ui/Card"
+import Reveal from "../../components/ui/Reveal"
 import AppealSection from "../../components/complaint/AppealSection"
 import { useAuth } from "../../contexts/AuthContext"
 import { useComplaintSummary } from "../../contexts/ComplaintSummaryContext"
@@ -240,7 +241,7 @@ function ComplaintDetail() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
+      <Reveal>
         <Link
           to="/complaints"
           className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-indigo-600"
@@ -252,7 +253,7 @@ function ComplaintDetail() {
         <p className="eyebrow mb-2">Detail laporan</p>
 
         <h1 className="page-title">Detail Pengaduan</h1>
-      </div>
+      </Reveal>
 
       {isLoading && !isInvalidId ? (
         <div className="relative space-y-3">
@@ -304,7 +305,7 @@ function ComplaintDetail() {
           </button>
         </div>
       ) : (
-        <>
+        <Reveal className="space-y-6">
           <Card className="relative overflow-hidden">
             <span className="orb -right-12 -top-12 h-44 w-44 bg-indigo-400/25" />
 
@@ -551,7 +552,7 @@ function ComplaintDetail() {
               <span>{actionNotice}</span>
             </div>
           )}
-        </>
+        </Reveal>
       )}
     </div>
   )

@@ -22,6 +22,8 @@ import {
 import Card from "../../components/ui/Card"
 import EmptyState from "../../components/ui/EmptyState"
 import Modal from "../../components/ui/Modal"
+import Reveal from "../../components/ui/Reveal"
+import { REVEAL_STAGGER } from "../../lib/motion"
 import { errorMessage } from "../../utils/errorMessage"
 import {
   ROLE_LABELS,
@@ -252,7 +254,10 @@ function Users() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <Reveal
+        as="section"
+        className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"
+      >
         <div>
           <p className="eyebrow mb-2">Administrasi</p>
           <h1 className="page-title">Kelola Pengguna</h1>
@@ -270,7 +275,7 @@ function Users() {
           <RefreshCw size={18} />
           Atur Ulang Password
         </button>
-      </section>
+      </Reveal>
 
       {error ? (
         <div
@@ -308,7 +313,10 @@ function Users() {
         </div>
       )}
 
-      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center sm:gap-4">
+      <Reveal
+        delay={REVEAL_STAGGER}
+        className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center sm:gap-4"
+      >
         <div className="relative flex-1">
           <Search
             size={17}
@@ -353,7 +361,7 @@ function Users() {
             ? "Memuat..."
             : `${visibleUsers.length} dari ${users?.length ?? 0} pengguna`}
         </p>
-      </div>
+      </Reveal>
 
       {isLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-500">
@@ -361,7 +369,7 @@ function Users() {
           <p>Memuat pengguna...</p>
         </div>
       ) : visibleUsers.length > 0 ? (
-        <>
+        <Reveal className="space-y-6">
           <div className="rounded-xl bg-white/60 border border-white/70 overflow-hidden">
             <table
               className="min-w-full divide-y divide-slate-900/[0.10]"
@@ -551,7 +559,7 @@ function Users() {
               </Card>
             ))}
           </div>
-        </>
+        </Reveal>
       ) : (
         <EmptyState
           icon={UsersIcon}

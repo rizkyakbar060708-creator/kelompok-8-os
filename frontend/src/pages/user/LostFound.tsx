@@ -19,6 +19,8 @@ import axios from "axios"
 
 import EmptyState from "../../components/ui/EmptyState"
 import Modal from "../../components/ui/Modal"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
 import {
   createLostFoundItem,
   deleteLostFoundItem,
@@ -31,6 +33,7 @@ import {
   type LostFoundType,
 } from "../../services/lostFoundService"
 import { errorMessage } from "../../utils/errorMessage"
+import { REVEAL_STAGGER } from "../../lib/motion"
 
 type TypeFilter = LostFoundType | "all"
 
@@ -238,7 +241,7 @@ function LostFound() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <Reveal className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           <p className="eyebrow mb-2">Pencarian barang</p>
           <h1 className="page-title">Lost &amp; Found</h1>
@@ -255,7 +258,7 @@ function LostFound() {
           <Plus size={18} />
           Lapor Barang
         </button>
-      </div>
+      </Reveal>
 
       {!isLoading && !error && notice && (
         <div
@@ -268,7 +271,10 @@ function LostFound() {
         </div>
       )}
 
-      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center">
+      <Reveal
+        delay={REVEAL_STAGGER}
+        className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center"
+      >
         <div className="relative flex-1">
           <Search
             size={17}
@@ -284,10 +290,13 @@ function LostFound() {
             className="input-base py-2.5 pl-10"
           />
         </div>
-      </div>
+      </Reveal>
 
       {!isLoading && !error && (
-        <div className="flex flex-wrap items-center gap-2">
+        <Reveal
+          delay={REVEAL_STAGGER * 2}
+          className="flex flex-wrap items-center gap-2"
+        >
           {TYPE_FILTER_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -320,7 +329,7 @@ function LostFound() {
               Reset filter
             </button>
           )}
-        </div>
+        </Reveal>
       )}
 
       {!isLoading && !error && actionError && (
@@ -358,17 +367,18 @@ function LostFound() {
           </button>
         </div>
       ) : visibleItems.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <RevealList className="grid gap-4 lg:grid-cols-2">
           {visibleItems.map((item) => (
-            <LostFoundCard
-              key={item.id}
-              item={item}
-              isUpdating={updatingId === item.id}
-              onFinish={handleFinish}
-              onDelete={setDeleteTarget}
-            />
+            <RevealItem key={item.id}>
+              <LostFoundCard
+                item={item}
+                isUpdating={updatingId === item.id}
+                onFinish={handleFinish}
+                onDelete={setDeleteTarget}
+              />
+            </RevealItem>
           ))}
-        </div>
+        </RevealList>
       ) : (
         <EmptyState
           icon={rows.length === 0 ? PackageSearch : SearchX}
