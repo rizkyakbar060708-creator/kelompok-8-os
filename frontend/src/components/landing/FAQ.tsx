@@ -1,6 +1,9 @@
 import { useState } from "react"
 import { ChevronDown, ChevronUp, HelpCircle } from "lucide-react"
 
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
+
 interface FAQItem {
   q: string
   a: string
@@ -40,7 +43,7 @@ function FAQ() {
   return (
     <section id="faq" className="py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+        <Reveal className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
           <span className="eyebrow inline-flex items-center justify-center gap-2 sm:justify-center">
             <HelpCircle size={16} className="shrink-0" />
             Pertanyaan umum
@@ -50,16 +53,16 @@ function FAQ() {
             Semua jawaban berikut mengacu pada kemampuan sebenarnya di
             CampusCare.
           </p>
-        </div>
+        </Reveal>
 
-        <div className="max-w-2xl mx-auto space-y-3">
+        <RevealList className="max-w-2xl mx-auto space-y-3">
           {FAQS.map((item, index) => {
             const isOpen = openId === index
             const panelId = `faq-panel-${index}`
             const buttonId = `faq-button-${index}`
 
             return (
-              <div
+              <RevealItem
                 key={item.q}
                 className="glass-card overflow-hidden rounded-2xl"
               >
@@ -87,10 +90,10 @@ function FAQ() {
                 >
                   {item.a}
                 </div>
-              </div>
+              </RevealItem>
             )
           })}
-        </div>
+        </RevealList>
       </div>
     </section>
   )

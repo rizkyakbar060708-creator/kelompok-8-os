@@ -1,6 +1,8 @@
 import { CheckCircle2, FileText, Settings, UserCheck } from "lucide-react"
 
 import Card from "../../components/ui/Card"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
 
 interface Step {
   icon: React.ElementType
@@ -60,22 +62,22 @@ function HowItWorks() {
   return (
     <section id="cara-kerja" className="py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+        <Reveal className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
           <span className="eyebrow">Proses pengaduan</span>
           <h2 className="page-title mt-2 mb-4">Bagaimana CampusCare Bekerja?</h2>
           <p className="page-subtitle">
             Dari penyampaian keluhan hingga penyelesaian, setiap tahap dapat
             Anda pantau dengan jelas.
           </p>
-        </div>
+        </Reveal>
 
-        <div
-          className="flex flex-col sm:flex-row gap-6 lg:gap-8 items-center"
-        >
+        <RevealList className="flex flex-col sm:flex-row gap-6 lg:gap-8 items-center">
           {STEPS.map((step, index) => (
-            <StepCard key={step.title} step={step} index={index} />
+            <RevealItem key={step.title} className="h-full">
+              <StepCard step={step} index={index} />
+            </RevealItem>
           ))}
-        </div>
+        </RevealList>
       </div>
     </section>
   )

@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom"
 import { LockKeyhole } from "lucide-react"
 
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
+import { REVEAL_STAGGER } from "../../lib/motion"
+
 const FOOTER_LINKS: readonly { label: string; href: string }[] = [
   { label: "Beranda", href: "#beranda" },
   { label: "Kategori", href: "#kategori" },
@@ -12,8 +16,8 @@ function Footer() {
   return (
     <footer className="border-t border-slate-200/60 bg-white/40 backdrop-blur-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 sm:gap-10 md:gap-14 mb-10">
-          <div className="col-span-2 sm:col-span-1">
+        <RevealList className="grid grid-cols-2 sm:grid-cols-4 gap-8 sm:gap-10 md:gap-14 mb-10">
+          <RevealItem className="col-span-2 sm:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <span className="brand-mark h-7 w-7 rounded-lg">
                 <LockKeyhole size={16} />
@@ -26,8 +30,9 @@ function Footer() {
               Platform pengaduan fasilitas kampus yang memudahkan mahasiswa
               menyampaikan masalah dan memantau penanganannya.
             </p>
-          </div>
-          <div>
+          </RevealItem>
+
+          <RevealItem>
             <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 mb-4">
               Navigasi
             </h3>
@@ -43,8 +48,9 @@ function Footer() {
                 </li>
               ))}
             </ul>
-          </div>
-          <div>
+          </RevealItem>
+
+          <RevealItem>
             <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 mb-4">
               Akun
             </h3>
@@ -66,14 +72,17 @@ function Footer() {
                 </Link>
               </li>
             </ul>
-          </div>
-        </div>
+          </RevealItem>
+        </RevealList>
 
-        <div className="border-t border-slate-200/40 pt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <Reveal
+          delay={REVEAL_STAGGER}
+          className="border-t border-slate-200/40 pt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        >
           <p className="text-xs text-slate-500">
             © 2026 CampusCare — Sistem Pengaduan Fasilitas Kampus
           </p>
-        </div>
+        </Reveal>
       </div>
     </footer>
   )

@@ -1,5 +1,7 @@
 import { ArrowRight, Send } from "lucide-react"
 
+import Reveal from "../../components/ui/Reveal"
+import { REVEAL_STAGGER } from "../../lib/motion"
 import Illustration from "./Illustration"
 
 interface HeroProps {
@@ -11,7 +13,7 @@ function Hero({ onPrimaryCta }: HeroProps) {
     <section id="beranda" className="relative pt-20 pb-32 sm:pt-32 sm:pb-40">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid items-center gap-12 sm:gap-16 lg:gap-24">
-          <div className="space-y-6 order-2 sm:order-1">
+          <Reveal className="space-y-6 order-2 sm:order-1">
             <span className="eyebrow inline-flex items-center gap-2 text-indigo-600">
               Platform resmi kampus
             </span>
@@ -39,11 +41,11 @@ function Hero({ onPrimaryCta }: HeroProps) {
                 Pelajari Cara Kerja <ArrowRight size={16} />
               </a>
             </div>
-          </div>
+          </Reveal>
 
-          <div className="order-1 sm:order-2 flex justify-center">
+          <Reveal delay={REVEAL_STAGGER} className="order-1 sm:order-2 flex justify-center">
             <Illustration className="w-full max-w-sm sm:max-w-md lg:max-w-lg" />
-          </div>
+          </Reveal>
         </div>
       </div>
     </section>

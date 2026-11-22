@@ -1,6 +1,8 @@
 import { Building2, BookOpen, ShieldAlert } from "lucide-react"
 
 import Card from "../../components/ui/Card"
+import Reveal from "../../components/ui/Reveal"
+import RevealList, { RevealItem } from "../../components/ui/RevealList"
 
 interface Category {
   icon: React.ElementType
@@ -75,20 +77,22 @@ function Categories() {
   return (
     <section id="kategori" className="py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
+        <Reveal className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
           <span className="eyebrow">Jenis pengaduan</span>
           <h2 className="page-title mt-2 mb-4">Pilih kategori keluhan Anda</h2>
           <p className="page-subtitle">
             Setiap pengaduan difasilitasi tim kampus sesuai dengan tanggung
             jawabnya.
           </p>
-        </div>
+        </Reveal>
 
-        <div className="grid gap-4 sm:grid-cols-3 lg:max-w-4xl mx-auto">
+        <RevealList className="grid gap-4 sm:grid-cols-3 lg:max-w-4xl mx-auto">
           {CATEGORIES.map((category) => (
-            <CategoryCard key={category.title} category={category} />
+            <RevealItem key={category.title} className="h-full">
+              <CategoryCard category={category} />
+            </RevealItem>
           ))}
-        </div>
+        </RevealList>
       </div>
     </section>
   )

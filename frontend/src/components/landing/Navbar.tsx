@@ -2,6 +2,8 @@ import { useState } from "react"
 import { Link } from "react-router-dom"
 import { Menu, X, LockKeyhole } from "lucide-react"
 
+import Reveal from "../../components/ui/Reveal"
+
 interface NavLinkItem {
   href: string
   label: string
@@ -22,7 +24,7 @@ function Navbar() {
       className="glass-nav sticky top-0 z-30"
       aria-label="Navigasi utama"
     >
-      <div className="flex h-[4.5rem] items-center justify-between px-4 sm:px-6 lg:px-8">
+      <Reveal className="flex h-[4.5rem] items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-2">
           <span className="brand-mark h-8 w-8 rounded-xl">
             <LockKeyhole size={18} />
@@ -60,7 +62,7 @@ function Navbar() {
             <Menu size={21} />
           </button>
         </div>
-      </div>
+      </Reveal>
 
       {mobileOpen && (
         <>

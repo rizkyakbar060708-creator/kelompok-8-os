@@ -1,5 +1,7 @@
 import { Send } from "lucide-react"
 
+import Reveal from "../../components/ui/Reveal"
+
 interface FinalCtaProps {
   onCta: () => void
 }
@@ -7,7 +9,7 @@ interface FinalCtaProps {
 function FinalCta({ onCta }: FinalCtaProps) {
   return (
     <section className="py-20 sm:py-28 overflow-hidden">
-      <div className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8 mx-auto max-w-3xl px-4 sm:px-6">
+      <Reveal className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8 mx-auto max-w-3xl px-4 sm:px-6">
         <span className="orb absolute -right-14 -top-14 h-56 w-56 bg-indigo-400/20" />
         <span className="orb absolute left-14 bottom-10 h-48 w-48 bg-violet-400/15" />
 
@@ -29,7 +31,7 @@ function FinalCta({ onCta }: FinalCtaProps) {
             Mulai Sekarang
           </button>
         </div>
-      </div>
+      </Reveal>
     </section>
   )
 }
