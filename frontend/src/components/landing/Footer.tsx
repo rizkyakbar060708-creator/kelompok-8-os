@@ -14,7 +14,7 @@ const FOOTER_LINKS: readonly { label: string; href: string }[] = [
 
 function Footer() {
   return (
-    <footer className="border-t border-slate-200/60 bg-white/40 backdrop-blur-sm">
+    <footer className="border-t border-slate-200/60 bg-white/40 footer-surface backdrop-blur-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         <RevealList className="grid grid-cols-2 sm:grid-cols-4 gap-8 sm:gap-10 md:gap-14 mb-10">
           <RevealItem className="col-span-2 sm:col-span-1">

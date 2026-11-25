@@ -1,12 +1,15 @@
 import { ArrowLeft, Compass, LayoutDashboard } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import Reveal from "../components/ui/Reveal";
+import UniskaBackground from "../components/ui/UniskaBackground";
 
 function NotFound() {
   const navigate = useNavigate();
 
   return (
-    <div className="app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+    <div className="app-shell-scene app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+      <UniskaBackground />
+
       <div className="orb -left-24 top-10 h-88 w-88 bg-blue-500/35" />
       <div className="orb -right-28 bottom-0 h-88 w-88 bg-violet-500/30" />
       <div className="orb left-1/2 top-[-7rem] h-80 w-80 -translate-x-1/2 bg-pink-400/28" />
@@ -56,7 +59,7 @@ function NotFound() {
           </div>
         </div>
 
-        <p className="mt-6 text-center text-xs text-muted-ambient">
+        <p className="mt-6 text-center text-xs text-muted-ambient scene-copy-muted">
           © 2026 CampusCare
         </p>
         </Reveal>

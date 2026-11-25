@@ -11,6 +11,7 @@ import api from "../../services/api";
 import axios from "axios";
 import { REVEAL_STAGGER } from "../../lib/motion";
 import Reveal from "../../components/ui/Reveal";
+import UniskaBackground from "../../components/ui/UniskaBackground";
 
 function Register() {
   const navigate = useNavigate();
@@ -63,7 +64,9 @@ function Register() {
   };
 
   return (
-    <div className="app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+    <div className="app-shell-scene app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+      <UniskaBackground />
+
       <div className="orb -right-24 top-10 h-88 w-88 bg-violet-500/32" />
       <div className="orb -left-28 bottom-0 h-88 w-88 bg-blue-500/32" />
       <div className="orb left-1/2 top-[-7rem] h-80 w-80 -translate-x-1/2 bg-pink-400/28" />
@@ -200,7 +203,7 @@ function Register() {
         </Reveal>
 
         <Reveal delay={REVEAL_STAGGER * 2} className="mt-6">
-          <p className="text-center text-xs text-muted-ambient">
+          <p className="text-center text-xs text-muted-ambient scene-copy-muted">
             © 2026 CampusCare
           </p>
         </Reveal>

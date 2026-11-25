@@ -1,8 +1,6 @@
 import { ArrowRight, Send } from "lucide-react"
 
 import Reveal from "../../components/ui/Reveal"
-import { REVEAL_STAGGER } from "../../lib/motion"
-import Illustration from "./Illustration"
 
 interface HeroProps {
   onPrimaryCta: () => void
@@ -11,16 +9,21 @@ interface HeroProps {
 function Hero({ onPrimaryCta }: HeroProps) {
   return (
     <section id="beranda" className="relative pt-20 pb-32 sm:pt-32 sm:pb-40">
+      {/* Glow putih di belakang kolom teks — padanan .hero::before di
+          uniska-preview.html — supaya judul + deskripsi tetap terbaca di
+          atas gedung UNISKA. File Illustration tidak dihapus (masih dipakai
+          di Fase 2), hanya tidak dipasang lagi di Hero. */}
+      <div className="scene-hero-glow" />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid items-center gap-12 sm:gap-16 lg:gap-24">
-          <Reveal className="space-y-6 order-2 sm:order-1">
+          <Reveal className="space-y-6">
             <span className="eyebrow inline-flex items-center gap-2 text-indigo-600">
               Platform resmi kampus
             </span>
             <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-slate-900 leading-[1.15]">
               Sampaikan Keluhan, Wujudkan Perubahan.
             </h1>
-            <p className="text-base sm:text-lg text-slate-600 leading-7 max-w-xl">
+            <p className="text-base sm:text-lg text-slate-700 leading-7 max-w-xl">
               Platform pengaduan kampus yang memudahkan mahasiswa menyampaikan
               masalah, memantau penanganan, dan ikut menciptakan lingkungan
               kampus yang lebih baik.
@@ -41,10 +44,6 @@ function Hero({ onPrimaryCta }: HeroProps) {
                 Pelajari Cara Kerja <ArrowRight size={16} />
               </a>
             </div>
-          </Reveal>
-
-          <Reveal delay={REVEAL_STAGGER} className="order-1 sm:order-2 flex justify-center">
-            <Illustration className="w-full max-w-sm sm:max-w-md lg:max-w-lg" />
           </Reveal>
         </div>
       </div>

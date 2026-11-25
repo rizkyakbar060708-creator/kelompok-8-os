@@ -534,6 +534,7 @@ menyesuaikan latar.
 | Path | Tipe | Ringkas |
 | --- | --- | --- |
 | `components/ui/Card.tsx` | Komponen | Glass card wrapper |
+| `components/ui/UniskaBackground.tsx` | Komponen | Latar animasi UNISKA sebagai overlay di bawah viewport (LandingPage Fase 1) |
 | `components/ui/StatusBadge.tsx` | Komponen | Pill status 4 nilai |
 | `components/ui/EmptyState.tsx` | Komponen | Panel kosong + aksi |
 | `components/ui/Modal.tsx` | Komponen | Dialog shared: overlay jelas, latar solid, max-w 448px, focus trap, Escape, klik luar |
@@ -1300,6 +1301,63 @@ diletakkan setelah alert error dan sebelum kartu KPI:
   dan badge sidebar ikut lewat `refreshSummary()`.
 
 ---
+
+### 8.12 Latar animasi UNISKA (LandingPage, Fase 1)
+
+Menambah latar pemandangan UNISKA sebagai overlay di bawah viewport di halaman
+`LandingPage` (Fase 1). Visualnya ditranskrip dari `uniska-preview.html`
+(repo root) sebagai acuan — hanya bagian latar dan modifier scene; reset
+`html/body`, duplikat `.btn-*`/`.glass-*` dasar, dan `.orb` tidak disalin
+(sudah ada di `index.css`).
+
+- **Komponen**: `components/ui/UniskaBackground.tsx` — reusable,
+  `aria-hidden="true"`, `pointer-events: none`.
+- **Wrapper**: class `.uniska-bg` — `position: fixed` menempel di bawah
+  (`inset: auto 0 0 0`), tinggi `62vh` min 320px, `z-index: -10`, dengan
+  `mask-image` gradien di tepi atas (`transparent 0% → #000 18%`, dari preview).
+- **Class latar**: `.uniska-layer` (wrap per lapisan, `--d` faktor
+  paralaks per lapisan), `.uniska-cloud`, `.uniska-flag`, `.uniska-tree`,
+  `.uniska-car`.
+- **Keyframes**: `uniska-drift` (awal −300px → 1900px), `uniska-wave`
+  (50% `skewY(6deg) scaleX(0.93)`), `uniska-sway` (50% `rotate(1.6deg)`),
+  `uniska-drive` (awal −200px → 1800px).
+- **Parallax**: ref ke root SVG; `pointermove` (passive) menulis CSS variable
+  `--uniska-x/--uniska-y` ke root, throttle dengan `requestAnimationFrame`,
+  cleanup `removeEventListener` + `cancelAnimationFrame`. Aktif hanya jika
+  `(hover: hover) and (pointer: fine)` dan !`prefers-reduced-motion`.
+- **Mobile (variant TSX, tanpa media query baru di index.css)**: mobil
+  (`<g class="uniska-car">`) → `max-sm:hidden`; pohon goyang
+  (`.uniska-tree`) → `max-sm:[animation:none]`; awan (`.uniska-cloud`) + bendera
+  (`.uniska-flag`) tetap jalan. Perilaku ini diverifikasi saat build:
+  `dist` mengandung `@media not all and (width>=40rem){.max-sm\:hidden…}`.
+- **Modifier `.app-shell-scene`** (dipasang di root `app-shell` di
+  LandingPage): `isolation: isolate`; glass di dalam scene dinaikkan
+  (`.glass-panel`/`.glass-card` → `rgba(255,255,255,.78)`, border indigo
+  tipis, `.glass-nav` → `rgba(255,255,255,.88)`, hover kartu → 0.86).
+  Opsional menurut rule §1.3: opasitas ≥ 0.5 dipertahankan, dinaikkan hanya
+  sejumlah tepat sampai teks utama tetap kontras (verifikasi visual manual —
+  tidak ada screenshot tool di sesi ini).
+- **Glow hero**: `.scene-hero-glow` di `Hero.tsx` — glow putih
+  `radial-gradient(62% 72% at 30% 45%, rgba(255,255,255,.80), transparent)`
+  di belakang kolom teks hero (padanan `.hero::before` di preview).
+- **Footer**: `Footer.tsx` punya class `footer-surface`; di dalam scene
+  sedikit lebih pekat (`rgba(255,255,255,.6)`), karena normalnya `bg-white/40`
+  ada di bawah ambang 0.5.
+- **Perbaikan keterbacaan (Fase 1, A)**: lead hero di `Hero.tsx`
+  `text-slate-600` → `text-slate-700`; `.scene-hero-glow` alpha putih
+  0.72 → 0.80.
+- **Fase 2:** halaman auth/error (`Login`, `Register`, `Forbidden`,
+  `NotFound`) juga memakai scene yang sama: root `app-shell-scene app-shell`
+  + `<UniskaBackground />` sebelum konten. Periksa di browser: panel/form di
+  tengah tidak bertabrakan dengan gedung, input jelas di atas latar, teks
+  footer `© 2026 CampusCare` (`text-muted-ambient`) terbaca, Register bisa
+  discroll di layar kecil, dan tidak ada scroll horizontal di 320px —
+  kesemuanya belum diverifikasi visualmente, hanya struktur
+  (`min-h-screen`, `overflow-hidden`, latar fixed).
+- **Teks `© 2026 CampusCare` (auth/error):** class `scene-copy-muted` pada
+  footer di `Login`/`Register`/`Forbidden`/`NotFound`; aturan scoped
+  `.app-shell-scene .scene-copy-muted { color: #334155; }` — keterbacaan
+  naik sedikit di dalam scene saja (sebagai penghalang glow menara UNISKA).
 
 ## 9. Status Pengaduan & Pemetaan Tampilannya
 

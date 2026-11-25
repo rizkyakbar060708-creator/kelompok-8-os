@@ -14,6 +14,7 @@ import { REVEAL_STAGGER } from "../../lib/motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { isAdmin } from "../../utils/roles";
 import Reveal from "../../components/ui/Reveal";
+import UniskaBackground from "../../components/ui/UniskaBackground";
 
 function Login() {
   const navigate = useNavigate();
@@ -70,7 +71,9 @@ function Login() {
   };
 
   return (
-    <div className="app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+    <div className="app-shell-scene app-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+      <UniskaBackground />
+
       <div className="orb -left-24 top-10 h-88 w-88 bg-blue-500/35" />
       <div className="orb -right-28 bottom-0 h-88 w-88 bg-violet-500/30" />
       <div className="orb left-1/2 -top-28 h-80 w-80 -translate-x-1/2 bg-pink-400/28" />
@@ -218,7 +221,7 @@ function Login() {
         </Reveal>
 
         <Reveal delay={REVEAL_STAGGER * 2} className="mt-6">
-          <p className="text-center text-xs text-muted-ambient">
+          <p className="text-center text-xs text-muted-ambient scene-copy-muted">
             © 2026 CampusCare
           </p>
         </Reveal>

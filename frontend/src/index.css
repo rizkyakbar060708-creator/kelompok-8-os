@@ -820,6 +820,150 @@
       0 28px 60px -32px rgba(49, 46, 129, 0.32),
       0 10px 24px -18px rgba(49, 46, 129, 0.22);
   }
+
+  /* ==========================================================================
+     Latar animasi UNISKA (Fase 1, LandingPage) — overlay di bawah viewport,
+     soal pemandangan kampus UNISKA sebagai garis pertama halaman. Hanya
+     transform yang dipakai (animasi car/tree/cloud); tidak ada backdrop-filter
+     baru karena latar sudah di bawah harga blur glass. Visualnya
+     ditranskrip dari uniska-preview.html (repo root) sebagai acuan.
+     ========================================================================== */
+
+  .uniska-bg {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: -10;
+    height: 62vh;
+    min-height: 320px;
+    pointer-events: none;
+    /* Sample gradien di tepi atas: teks di atas gedung tetap terbaca. */
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 18%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 18%);
+  }
+
+  .uniska-bg svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Satu komponen scene; --d seimbang per lapisan (diambil dari TSX). */
+  .uniska-layer {
+    transform: translate(
+      calc(var(--uniska-x, 0) * var(--d, 0) * 1px),
+      calc(var(--uniska-y, 0) * var(--d, 0) * 0.4px)
+    );
+    transition: transform 250ms var(--ease-liquid);
+  }
+
+  .uniska-cloud {
+    animation: uniska-drift 70s linear infinite;
+  }
+
+  .uniska-flag {
+    transform-origin: 567px 170px;
+    animation: uniska-wave 2.2s ease-in-out infinite;
+  }
+
+  .uniska-tree {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: uniska-sway 5s ease-in-out infinite;
+  }
+
+  .uniska-car {
+    animation: uniska-drive 26s linear infinite;
+  }
+
+  @keyframes uniska-drift {
+    from {
+      transform: translateX(-300px);
+    }
+    to {
+      transform: translateX(1900px);
+    }
+  }
+
+  @keyframes uniska-wave {
+    50% {
+      transform: skewY(6deg) scaleX(0.93);
+    }
+  }
+
+  @keyframes uniska-sway {
+    50% {
+      transform: rotate(1.6deg);
+    }
+  }
+
+  @keyframes uniska-drive {
+    from {
+      transform: translateX(-200px);
+    }
+    to {
+      transform: translateX(1800px);
+    }
+  }
+
+  /* Fase 1 — Glow putih di belakang kolom teks Hero. Padanan .hero::before
+     dari uniska-preview.html: supaya judul + deskripsi tetap terbaca di atas
+     gedung. Scoped pada .scene-hero-glow, tidak menyentuh halaman lain. */
+  .scene-hero-glow {
+    position: absolute;
+    inset: 1.5rem -1.5rem 0 -2rem;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      62% 72% at 30% 45%,
+      rgba(255, 255, 255, 0.80),
+      rgba(255, 255, 255, 0) 100%
+    );
+  }
+
+  /* Fase 1 — Latar UNISKA dibesarkanGlass kaca di dalam scene (bukan di
+     .app-shell global). Alpha tetap ≥ 0.5 (rule design.md §1.3) dan hanya
+     ditingkatkan sejumlah yang tepat: hanya apabila teks utama mulai
+     kurang terbaca, jadi sembunyi kaca normal tetap bentuknya. */
+  .app-shell-scene {
+    isolation: isolate;
+  }
+
+  .app-shell-scene .glass-panel {
+    background: rgba(255, 255, 255, 0.78);
+    border-color: rgba(99, 102, 241, 0.22);
+  }
+
+  .app-shell-scene .glass-card {
+    background: rgba(255, 255, 255, 0.78);
+    border-color: rgba(99, 102, 241, 0.18);
+  }
+
+  .app-shell-scene .glass-nav {
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(99, 102, 241, 0.2);
+  }
+
+  /* Kartu di dalam scene sedikit lebih pekat (0.86) dari kondisi normal
+     (.68) supaya hover tidak jadi lebih tipis dari normal — pengecualian
+     khusus untuk scene UNISKA. */
+  .app-shell-scene .glass-card-hover:hover {
+    background: rgba(255, 255, 255, 0.86);
+  }
+
+  /* Fase 1 — Footer di scene sedikit lebih pekat: bg white/40 normal berada
+     di bawah ambang 0.5, jadi di scene dibesarkan sekadar cukup agar teks
+     footer tetap kontras. */
+  .app-shell-scene .footer-surface {
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  /* Teks `© 2026 CampusCare` (auth/error) di scene: sedikit lebih gelap
+     (slate-700) sebagai bahan pemantau cahaya dari menara UNISKA di bawahnya.
+     Class ini dipakai lewat scene-copy-muted di halaman auth/error;
+     .text-muted-ambient secara global tetap tidak diubah (dashboard/admin). */
+  .app-shell-scene .scene-copy-muted {
+    color: #334155;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -845,5 +989,20 @@
 
   html {
     scroll-behavior: auto !important;
+  }
+
+  /* Latar UNISKA di reduced motion: gerak mati, awan diam di posisi statis.
+     Parallax tidak diciptakan karena effect di TSX tidak pasang listener. */
+  .uniska-cloud,
+  .uniska-flag,
+  .uniska-tree,
+  .uniska-car,
+  .uniska-layer {
+    animation: none;
+    transition: none;
+  }
+
+  .uniska-cloud {
+    transform: translateX(500px);
   }
 }
