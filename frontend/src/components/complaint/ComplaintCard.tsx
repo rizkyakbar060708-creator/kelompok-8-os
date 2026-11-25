@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 
 import { subCategoryLabel } from "../../services/complaintService"
 import StatusBadge from "../ui/StatusBadge"
+import FacilityComplaintCard from "./FacilityComplaintCard"
 
 type Status =
   | "PENDING"
@@ -12,7 +13,7 @@ type Status =
 
 type Category = "FASILITAS" | "AKADEMIK" | "KEAMANAN"
 
-interface ComplaintCardProps {
+export interface ComplaintCardProps {
   id: number
   title: string
   category: Category
@@ -58,17 +59,25 @@ function CategoryBadge({ category }: { category: Category }) {
   )
 }
 
-function ComplaintCard({
-  id,
-  title,
-  category,
-  subCategory,
-  location,
-  date,
-  status,
-  reporter,
-  isAnonymous = false,
-}: ComplaintCardProps) {
+function ComplaintCard(props: ComplaintCardProps) {
+  // Fasilitas punya bentuk sendiri (tiket perbaikan); Akademik dan Keamanan
+  // tetap memakai kartu di bawah.
+  if (props.category === "FASILITAS") {
+    return <FacilityComplaintCard {...props} />
+  }
+
+  const {
+    id,
+    title,
+    category,
+    subCategory,
+    location,
+    date,
+    status,
+    reporter,
+    isAnonymous = false,
+  } = props
+
   const subLabel = subCategoryLabel(subCategory ?? null)
 
   return (

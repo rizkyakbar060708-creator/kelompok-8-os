@@ -964,6 +964,388 @@
   .app-shell-scene .scene-copy-muted {
     color: #334155;
   }
+
+  /* ==========================================================================
+     Kartu pengaduan Fasilitas —paket fasilitas dari unzip zip
+     CampusCare-tiket-fasilitas. Repo tidak punya cat-* sebelumnya, jadi ini
+     bawaan asli dari zip (token, ikon, kartu dasar). cat-keamanan dan
+     cat-akademik sengaja tidak dibawa: kartu generik Keamanan/Akademik
+     tetap memakai pola repo.
+     ========================================================================== */
+
+  /* Tema fasilitas: indigo/sian sebagai tanda khas fasilitas. */
+  .cat-fasilitas {
+    --cat-accent: #6366f1;
+    --cat-ink: #4338ca;
+    --cat-rgb: 99, 102, 241;
+    --cat-from: #6366f1;
+    --cat-to: #0ea5e9;
+  }
+
+  /* Ubin ikon gradien — dipakai kartu fasilitas (tiket) */
+  .cat-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 0.85rem;
+    color: #ffffff;
+    background: linear-gradient(140deg, var(--cat-from, #6366f1), var(--cat-to, #a855f7));
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.45),
+      0 12px 22px -12px rgba(var(--cat-rgb, 99, 102, 241), 0.9);
+    transition: transform 380ms var(--ease-liquid);
+  }
+
+  .cat-icon::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    border: 2px solid var(--cat-accent, #6366f1);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .cat-ink {
+    color: var(--cat-ink, #4338ca);
+  }
+
+  .cat-card {
+    overflow: hidden;
+  }
+
+  .cat-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  /* --- FASILITAS: blueprint (kisi teknik bergeser saat hover) ------------- */
+
+  .cat-card.cat-fasilitas {
+    border-color: rgba(129, 140, 248, 0.45);
+    background: linear-gradient(
+      135deg,
+      rgba(232, 236, 255, 0.78) 0%,
+      rgba(255, 255, 255, 0.58) 60%
+    );
+  }
+
+  .cat-card.cat-fasilitas:hover {
+    border-color: rgba(99, 102, 241, 0.65);
+    background: linear-gradient(
+      135deg,
+      rgba(224, 231, 255, 0.88) 0%,
+      rgba(255, 255, 255, 0.68) 60%
+    );
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.95),
+      0 0 0 1px rgba(99, 102, 241, 0.16),
+      0 30px 58px -30px rgba(67, 56, 202, 0.5);
+  }
+
+  /* Kisi 24px; pergeserannya tepat satu sel supaya loop tidak melompat */
+  .cat-card.cat-fasilitas::after {
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.13) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.13) 1px, transparent 1px);
+    background-size: 24px 24px;
+    -webkit-mask-image: linear-gradient(200deg, #000 0%, transparent 72%);
+    mask-image: linear-gradient(200deg, #000 0%, transparent 72%);
+  }
+
+  .cat-card.cat-fasilitas:hover::after {
+    animation: cat-grid-pan 2.4s linear infinite;
+  }
+
+  .cat-card.cat-fasilitas:hover .cat-icon {
+    transform: rotate(-8deg) scale(1.1);
+  }
+
+  @keyframes cat-grid-pan {
+    to { background-position: 24px 24px; }
+  }
+
+  /* ==========================================================================
+     Tiket pengaduan Fasilitas (FacilityComplaintCard)
+     Bentuk: kartu bertakik di garis sobekan antara stub (kiri) dan badan.
+     Takik dibuat dengan mask (dua radial-gradient di tepi atas dan bawah),
+     bukan elemen berwarna, supaya yang terlihat di takik tetap latar asli di
+     belakang kaca. Konsekuensinya mask ikut memotong bayangan kartu, jadi
+     bayangan dan angkatan hover dipindah ke pembungkus .tk-wrap.
+     ========================================================================== */
+
+  .tk-wrap {
+    --tk-stub: 6.25rem;
+    /* h-full: kartu dalam satu baris grid sama tinggi */
+    height: 100%;
+    border-radius: 1rem;
+    box-shadow:
+      0 22px 44px -28px rgba(49, 46, 129, 0.34),
+      0 8px 18px -14px rgba(49, 46, 129, 0.22);
+    transition:
+      transform 320ms var(--ease-liquid),
+      box-shadow 320ms var(--ease-liquid);
+  }
+
+  .tk-wrap:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 34px 60px -30px rgba(67, 56, 202, 0.5),
+      0 10px 22px -14px rgba(67, 56, 202, 0.3);
+  }
+
+  .tk-card {
+    --notch: 9px;
+    display: grid;
+    grid-template-columns: var(--tk-stub) minmax(0, 1fr);
+    height: 100%;
+    border-radius: 1rem;
+    -webkit-mask:
+      radial-gradient(circle var(--notch) at var(--tk-stub) 0, transparent 98%, #000) top / 100% 51% no-repeat,
+      radial-gradient(circle var(--notch) at var(--tk-stub) 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+    mask:
+      radial-gradient(circle var(--notch) at var(--tk-stub) 0, transparent 98%, #000) top / 100% 51% no-repeat,
+      radial-gradient(circle var(--notch) at var(--tk-stub) 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+  }
+
+  /* Stub: nomor tiket + barcode. Berputar sedikit dari sudut kiri-bawah saat
+     hover, seperti sobekan yang mau lepas. */
+  .tk-stub {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 1.1rem 0.6rem 1rem;
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.14), rgba(14, 165, 233, 0.05));
+    transform-origin: 0 100%;
+    transition: transform 520ms var(--ease-liquid);
+  }
+
+  .tk-card:hover .tk-stub {
+    transform: rotate(-2.2deg) translateX(-2px);
+  }
+
+  .tk-body {
+    position: relative;
+    min-width: 0;
+    padding: 1.1rem 1.25rem 1rem 1.35rem;
+    /* garis sobekan */
+    border-left: 2px dashed rgba(99, 102, 241, 0.35);
+    transition: transform 520ms var(--ease-liquid), border-color 300ms var(--ease-liquid);
+  }
+
+  .tk-card:hover .tk-body {
+    transform: translateX(2px);
+    border-left-color: rgba(79, 70, 229, 0.7);
+  }
+
+  /* Barcode dekoratif + garis pemindai yang menyapu saat hover */
+  .tk-barcode {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 1.5rem;
+    overflow: hidden;
+    border-radius: 2px;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        rgba(55, 48, 163, 0.75) 0 2px,
+        transparent 2px 4px,
+        rgba(55, 48, 163, 0.75) 4px 5px,
+        transparent 5px 8px,
+        rgba(55, 48, 163, 0.75) 8px 11px,
+        transparent 11px 13px
+      );
+  }
+
+  .tk-barcode::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: #f43f5e;
+    box-shadow: 0 0 8px 1px rgba(244, 63, 94, 0.7);
+    opacity: 0;
+  }
+
+  .tk-card:hover .tk-barcode::after {
+    opacity: 1;
+    animation: tk-scan 1.4s ease-in-out infinite alternate;
+  }
+
+  /* Gir latar: diam saat idle, berputar pelan saat hover, dan terus berputar
+     untuk status Diproses sebagai tanda "sedang dikerjakan". */
+  .tk-watermark {
+    position: absolute;
+    right: -1.5rem;
+    bottom: -2rem;
+    z-index: -1;
+    color: rgba(79, 70, 229, 0.09);
+    pointer-events: none;
+  }
+
+  .tk-card:hover .tk-watermark {
+    animation: tk-spin 14s linear infinite;
+  }
+
+  .tk-wrap[data-status="IN_PROGRESS"] .tk-watermark {
+    animation: tk-spin 9s linear infinite;
+    color: rgba(59, 130, 246, 0.13);
+  }
+
+  /* --- Jalur progres ------------------------------------------------------ */
+
+  .tk-track {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tk-step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .tk-node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    border: 2px solid rgba(148, 163, 184, 0.75);
+    background: #ffffff;
+    color: #ffffff;
+    transition: background 300ms var(--ease-liquid), border-color 300ms var(--ease-liquid);
+  }
+
+  .tk-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .tk-step[data-state="done"] .tk-node {
+    border-color: #10b981;
+    background: #10b981;
+  }
+
+  .tk-step[data-state="active"] .tk-node {
+    border-color: #6366f1;
+    background: #eef2ff;
+    color: #4338ca;
+  }
+
+  /* Cincin berdenyut di langkah yang sedang berjalan */
+  .tk-step[data-state="active"] .tk-node::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    border: 2px solid #6366f1;
+    animation: tk-pulse 1.8s ease-out infinite;
+  }
+
+  .tk-step[data-state="rejected"] .tk-node {
+    border-color: #f43f5e;
+    background: #f43f5e;
+  }
+
+  .tk-step[data-state="done"] .tk-label,
+  .tk-step[data-state="active"] .tk-label {
+    color: #1e293b;
+  }
+
+  .tk-step[data-state="rejected"] .tk-label {
+    color: #be123c;
+  }
+
+  /* Garis dari langkah sebelumnya ke langkah ini: membentang dari pusat kolom
+     ini ke kiri sejauh satu kolom (100%). */
+  .tk-line {
+    position: absolute;
+    top: 0.6875rem;
+    right: 50%;
+    width: 100%;
+    height: 3px;
+    border-radius: 999px;
+    background: repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.55) 0 5px, transparent 5px 9px);
+  }
+
+  .tk-line::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    transform-origin: left center;
+  }
+
+  .tk-line[data-state="fill"] {
+    background: rgba(16, 185, 129, 0.2);
+  }
+
+  .tk-line[data-state="fill"]::after {
+    background: linear-gradient(90deg, #10b981, #34d399);
+    animation: tk-fill 900ms var(--ease-liquid) both;
+    animation-delay: calc(var(--tk-i, 0) * 180ms);
+  }
+
+  .tk-line[data-state="flow"]::after {
+    background: repeating-linear-gradient(90deg, #6366f1 0 6px, transparent 6px 12px);
+    background-size: 12px 100%;
+    animation: tk-flow 700ms linear infinite;
+  }
+
+  .tk-line[data-state="rejected"] {
+    background: rgba(244, 63, 94, 0.25);
+  }
+
+  .tk-line[data-state="rejected"]::after {
+    background: #f43f5e;
+    animation: tk-fill 900ms var(--ease-liquid) both;
+    animation-delay: calc(var(--tk-i, 0) * 180ms);
+  }
+
+  .tk-cog-spin {
+    animation: tk-spin 3s linear infinite;
+  }
+
+  @keyframes tk-scan {
+    from { transform: translateX(0); }
+    to { transform: translateX(5.2rem); }
+  }
+
+  @keyframes tk-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes tk-pulse {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+
+  @keyframes tk-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  @keyframes tk-flow {
+    to { background-position: 12px 0; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1004,5 +1386,24 @@
 
   .uniska-cloud {
     transform: translateX(500px);
+  }
+
+  /* Tiket Fasilitas + kartu fasilitas: gerak di-off saat reduced motion. */
+  .cat-card::after,
+  .cat-icon,
+  .cat-icon::after,
+  .tk-card:hover .tk-barcode::after,
+  .tk-card:hover .tk-watermark,
+  .tk-wrap[data-status="IN_PROGRESS"] .tk-watermark,
+  .tk-step .tk-node::after,
+  .tk-line::after,
+  .tk-cog-spin {
+    animation: none !important;
+  }
+
+  .tk-wrap:hover,
+  .tk-card:hover .tk-stub,
+  .tk-card:hover .tk-body {
+    transform: none !important;
   }
 }

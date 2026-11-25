@@ -538,7 +538,8 @@ menyesuaikan latar.
 | `components/ui/StatusBadge.tsx` | Komponen | Pill status 4 nilai |
 | `components/ui/EmptyState.tsx` | Komponen | Panel kosong + aksi |
 | `components/ui/Modal.tsx` | Komponen | Dialog shared: overlay jelas, latar solid, max-w 448px, focus trap, Escape, klik luar |
-| `components/complaint/ComplaintCard.tsx` | Komponen | Kartu pengaduan di daftar |
+| `components/complaint/ComplaintCard.tsx` | Komponen | Kartu pengaduan di daftar (cabang FASILITAS → Tiket) |
+| `components/complaint/FacilityComplaintCard.tsx` | Kartu pengaduan Fasilitas berbentuk tiket perbaikan (`tk-*`, `cat-fasilitas`) |
 | `components/auth/ProtectedRoute.tsx` | Komponen | Route guard + loading screen |
 | `components/auth/DashboardRedirector.tsx` | Komponen | Pilih dashboard per role |
 | `layouts/DashboardLayout.tsx` | Layout | Shell + sidebar + topbar |
@@ -608,6 +609,9 @@ Props: `icon: LucideIcon`, `title`, `description`, `action?`.
 
 ### 7.6 `ComplaintCard` (`components/complaint/ComplaintCard.tsx`)
 
+Kartu bercabang: kategori `FASILITAS` → `FacilityComplaintCard` (bentuk tiket
+perbaikan, §7.6.1); `KEAMANAN` dan `AKADEMIK` tetap kartu dasar berikut.
+
 ```
 article.glass-card.glass-card-hover.group.rounded-2xl.p-5
 ├── header  flex items-start justify-between gap-4
@@ -626,6 +630,19 @@ Props: `id`, `title`, `category`, `location`, `date`, `status`, dan opsional
 
 - Chevron bergeser `translate-x-0.5` saat card di-hover.
 - Ikon meta selalu `size={16}` dengan warna `text-slate-500`.
+
+### 7.6.1 Tiket perbaikan (`FacilityComplaintCard`)
+
+- Bentuk: `tk-wrap` (shadow, hover naik 3px) → `tk-card` (mask takik atas/bawah
+  51%) → stub kiri (ikon `cat-icon`, nomor tiket `#000`, barcode `tk-barcode`)
+  dan badan kanan (garis sobekan `border-left: 2px dashed` + jalur progres
+  3 langkah `tk-track/tk-step/tk-node`).
+- Jalur progres memakai empat status backend (`PENDING`, `IN_PROGRESS`,
+  `RESOLVED`, `REJECTED`) — tidak ada fakta baru dikarang (mis. tanggal tiap
+  tahap; `getSteps` di `FacilityComplaintCard.tsx`).
+- Air (`tk-watermark`) diam saat idle, berputar saat hover dan
+  `IN_PROGRESS` (panjang 3s) — animasi `transform` saja.
+- Gerak di-off di `prefers-reduced-motion` (daftar di §2).
 
 ### 7.7 Button
 
